@@ -27,69 +27,91 @@ impl Vec3 {
             z: self.z / len,
         }
     }
+    
+    fn subtract(&self, other: &Vec3) -> Vec3 {
+        Vec3 {
+            x: self.x - other.x,
+            y: self.y - other.y,
+            z: self.z - other.z,
+        }
+    }
+}
+
+struct Ray {
+    origin: Vec3,
+    direction: Vec3,
+}
+
+impl Ray {
+    fn new(origin: Vec3, direction: Vec3) -> Self {
+        Self {
+            origin,
+            direction: direction.normalized(),
+        }
+    }
+    
+    fn at(&self, t: f32) -> Vec3 {
+        Vec3 {
+            x: self.origin.x + self.direction.x * t,
+            y: self.origin.y + self.direction.y * t,
+            z: self.origin.z + self.direction.z * t,
+        }
+    }
 }
 
 trait Shape {
-    fn intersect(&self, x: f32, y: f32) -> Option<(f32, Vec3)>;
-    fn get_color(&self) -> (u8, u8, u8);
+    fn intersect(&self, ray: &Ray) -> Option<(f32, Vec3)>;
+    fn get_color(&self) -> (f32, f32, f32);
 }
 
 struct Sphere {
     center: Vec3,
     radius: f32,
-    color: (u8, u8, u8),
+    color: (f32, f32, f32),
 }
 
 impl Shape for Sphere {
-    fn intersect(&self, x: f32, y: f32) -> Option<(f32, Vec3)> {
-        let dx = x - self.center.x;
-        let dy = y - self.center.y;
-        let distance_sq = dx * dx + dy * dy;
-        let radius_sq = self.radius * self.radius;
+    fn intersect(&self, ray: &Ray) -> Option<(f32, Vec3)> {
+        let oc = ray.origin.subtract(&self.center);
         
-        if distance_sq <= radius_sq {
-            let dz = (radius_sq - distance_sq).sqrt();
-            let normal = Vec3::new(dx, dy, dz).normalized();
-            Some((distance_sq, normal))
-        } else {
-            None
+        let a = ray.direction.dot(ray.direction);
+        let b = 2.0 * oc.dot(ray.direction);
+        let c = oc.dot(oc) - self.radius * self.radius;
+        
+        let discriminant = b * b - 4.0 * a * c;
+        
+        if discriminant < 0.0 {
+            return None;
         }
+        
+        let t1 = (-b - discriminant.sqrt()) / (2.0 * a);
+        let t2 = (-b + discriminant.sqrt()) / (2.0 * a);
+        
+        let t = if t1 > 0.001 {
+            t1
+        } else if t2 > 0.001 {
+            t2
+        } else {
+            return None;
+        };
+        
+        let hit_point = ray.at(t);
+        let normal = hit_point.subtract(&self.center).normalized();
+        
+        Some((t, normal))
     }
     
-    fn get_color(&self) -> (u8, u8, u8) {
+    fn get_color(&self) -> (f32, f32, f32) {
         self.color
     }
 }
 
-struct Rectangle {
-    min_x: f32,
-    min_y: f32,
-    max_x: f32,
-    max_y: f32,
-    height: f32,
-    color: (u8, u8, u8),
-}
-
-impl Shape for Rectangle {
-    fn intersect(&self, x: f32, y: f32) -> Option<(f32, Vec3)> {
-        if x >= self.min_x && x <= self.max_x && y >= self.min_y && y <= self.max_y {
-            let normal = Vec3::new(0.0, 0.0, 1.0);
-            let dx = (x - (self.min_x + self.max_x) / 2.0) / ((self.max_x - self.min_x) / 2.0);
-            let dy = (y - (self.min_y + self.max_y) / 2.0) / ((self.max_y - self.min_y) / 2.0);
-            let distance_sq = dx * dx + dy * dy + self.height * self.height;
-            Some((distance_sq, normal))
-        } else {
-            None
-        }
-    }
+fn rgb_to_u32(r: f32, g: f32, b: f32) -> u32 {
+    let r = (r.clamp(0.0, 1.0) * 255.0) as u32;
+    let g = (g.clamp(0.0, 1.0) * 255.0) as u32;
+    let b = (b.clamp(0.0, 1.0) * 255.0) as u32;
     
-    fn get_color(&self) -> (u8, u8, u8) {
-        self.color
-    }
-}
-
-fn rgb_to_u32(r: u8, g: u8, b: u8) -> u32 {
-    (r as u32) << 16 | (g as u32) << 8 | b as u32
+    (r << 16) | (g << 8) | b
 }
 
 fn main() {
@@ -106,60 +128,62 @@ fn main() {
 
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
+    let camera_pos = Vec3::new(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0, -500.0);
+    
+    let center_x = WIDTH as f32 / 2.0;
+    let center_y = HEIGHT as f32 / 2.0;
+
     let shapes: Vec<Box<dyn Shape>> = vec![
         Box::new(Sphere {
-            center: Vec3::new(200.0, 300.0, 0.0),
-            radius: 150.0,
-            color: (55, 55, 255),
+            center: Vec3::new(center_x, center_y, 100.0),
+            radius: 200.0,
+            color: (0.1, 0.1, 0.8),
         }),
         Box::new(Sphere {
-            center: Vec3::new(500.0, 250.0, 0.0),
-            radius: 100.0,
-            color: (255, 55, 55),
-        }),
-        Box::new(Rectangle {
-            min_x: 100.0,
-            min_y: 100.0,
-            max_x: 300.0,
-            max_y: 200.0,
-            height: 10.0,
-            color: (55, 255, 55),
+            center: Vec3::new(center_x - 60.0, center_y - 60.0, 20.0),
+            radius: 120.0,
+            color: (0.0, 0.8, 0.8),
         }),
     ];
 
-    let light_dir = Vec3::new(0.5, -1.0, 0.5).normalized();
-    let background_color = rgb_to_u32(30, 30, 30);
+    let background_color = rgb_to_u32(0.05, 0.05, 0.05);
+    // let light_dir = Vec3::new(-0.5,-0.8, -0.5).normalized();
+    let light_dir = Vec3::new(0.0, 0.0, -1.0).normalized();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
-                let mut color = background_color;
-                let mut min_distance = f32::MAX;
-                let mut hit_normal = None;
-                let mut hit_color = None;
+                let direction = Vec3::new(
+                    x as f32 - camera_pos.x,
+                    y as f32 - camera_pos.y,
+                    0.0 - camera_pos.z,
+                ).normalized();
+                
+                let ray = Ray::new(camera_pos, direction);
+                
+                let mut closest_hit: Option<(f32, Vec3, (f32, f32, f32))> = None;
+                let mut closest_t = f32::MAX;
                 
                 for shape in &shapes {
-                    if let Some((distance, normal)) = shape.intersect(x as f32, y as f32) {
-                        if distance < min_distance {
-                            min_distance = distance;
-                            hit_normal = Some(normal);
-                            hit_color = Some(shape.get_color());
+                    if let Some((t, normal)) = shape.intersect(&ray) {
+                        if t < closest_t {
+                            closest_t = t;
+                            closest_hit = Some((t, normal, shape.get_color()));
                         }
                     }
                 }
                 
-                if let (Some(normal), Some(shape_color)) = (hit_normal, hit_color) {
+                let color = if let Some((_, normal, (r, g, b))) = closest_hit {
+                    // Apply lighting
                     let diffuse = normal.dot(light_dir).max(0.0);
                     let ambient = 0.2;
                     let intensity = (diffuse + ambient).min(1.0);
                     
-                    let (r, g, b) = shape_color;
-                    color = rgb_to_u32(
-                        (r as f32 * intensity) as u8,
-                        (g as f32 * intensity) as u8,
-                        (b as f32 * intensity) as u8,
-                    );
-                }
+                    rgb_to_u32(r * intensity, g * intensity, b * intensity)
+                    // rgb_to_u32(r, g, b)
+                } else {
+                    background_color
+                };
 
                 buffer[y * WIDTH + x] = color;
             }
