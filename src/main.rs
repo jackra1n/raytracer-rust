@@ -20,7 +20,10 @@ impl Vec3 {
     }
 
     fn normalized(&self) -> Vec3 {
-        let len = self.dot(*self).sqrt();
+        let len = (self.x * self.x + self.y * self.y + self.z * self.z).sqrt();
+        if len < 0.00001 {
+            return *self; // Avoid division by zero
+        }
         Vec3 {
             x: self.x / len,
             y: self.y / len,
@@ -128,10 +131,10 @@ fn main() {
 
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
 
-    let camera_pos = Vec3::new(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0, -500.0);
+    let camera_pos = Vec3::new(0.0, 0.0, -500.0);
     
-    let center_x = WIDTH as f32 / 2.0;
-    let center_y = HEIGHT as f32 / 2.0;
+    let center_x = 0.0;
+    let center_y = 0.0;
 
     let shapes: Vec<Box<dyn Shape>> = vec![
         Box::new(Sphere {
@@ -140,22 +143,24 @@ fn main() {
             color: (0.1, 0.1, 0.8),
         }),
         Box::new(Sphere {
-            center: Vec3::new(center_x - 60.0, center_y - 60.0, 20.0),
+            center: Vec3::new(center_x + 60.0, center_y + 50.0, 20.0),
             radius: 120.0,
             color: (0.0, 0.8, 0.8),
         }),
     ];
 
     let background_color = rgb_to_u32(0.05, 0.05, 0.05);
-    // let light_dir = Vec3::new(-0.5,-0.8, -0.5).normalized();
-    let light_dir = Vec3::new(0.0, 0.0, -1.0).normalized();
+    let light_dir = Vec3::new(-0.7, -0.7, -0.7).normalized();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
+                let world_x = -(x as f32 - WIDTH as f32 / 2.0);
+                let world_y = (y as f32 - HEIGHT as f32 / 2.0) * -1.0;
+                
                 let direction = Vec3::new(
-                    x as f32 - camera_pos.x,
-                    y as f32 - camera_pos.y,
+                    world_x - camera_pos.x,
+                    world_y - camera_pos.y,
                     0.0 - camera_pos.z,
                 ).normalized();
                 
@@ -176,11 +181,10 @@ fn main() {
                 let color = if let Some((_, normal, (r, g, b))) = closest_hit {
                     // Apply lighting
                     let diffuse = normal.dot(light_dir).max(0.0);
-                    let ambient = 0.2;
+                    let ambient = 0.3;
                     let intensity = (diffuse + ambient).min(1.0);
                     
                     rgb_to_u32(r * intensity, g * intensity, b * intensity)
-                    // rgb_to_u32(r, g, b)
                 } else {
                     background_color
                 };
