@@ -1,4 +1,7 @@
 use minifb::{Key, Window, WindowOptions};
+use std::path::Path;
+use rayon::prelude::*;
+
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -48,6 +51,18 @@ impl Vec3 {
 
     fn distance(a: &Vec3, b: &Vec3) -> f32 {
         a.sub(b).length()
+    }
+
+    fn rotate_around_y(&self, angle_degrees: f32) -> Vec3 {
+        let angle_rad = angle_degrees * std::f32::consts::PI / 180.0;
+        let cos_a = angle_rad.cos();
+        let sin_a = angle_rad.sin();
+        
+        Vec3 {
+            x: self.x * cos_a + self.z * sin_a,
+            y: self.y,
+            z: -self.x * sin_a + self.z * cos_a,
+        }
     }
 }
 
@@ -337,7 +352,7 @@ impl Light {
 }
 
 struct Scene {
-    objects: Vec<Box<dyn Object>>,
+    objects: Vec<Box<dyn Object + Sync>>,
     lights: Vec<Light>,
 }
 
@@ -349,11 +364,23 @@ impl Scene {
         }
     }
 
-    fn add_object(&mut self, obj: Box<dyn Object>) {
+    fn add_object(&mut self, obj: Box<dyn Object + Sync>) {
         self.objects.push(obj);
     }
     fn add_light(&mut self, l: Light) {
         self.lights.push(l);
+    }
+}
+
+fn load_mesh(scene: &mut Scene, path: &str, color: Color, scale: f32, offset: Vec3) {
+    match Mesh::from_obj(path, color, scale, offset, 180.0) {
+        Ok(mesh) => {
+            println!("Loaded {} with {} triangles", path, mesh.triangles.len());
+            scene.add_object(Box::new(mesh));
+        },
+        Err(e) => {
+            println!("Failed to load {}: {}", path, e);
+        }
     }
 }
 
@@ -378,18 +405,37 @@ fn init_scene() -> Scene {
         limited: false,
     }));
 
+    let amogus_pos = Vec3::new(0.0, 100.0, 200.0);
+    let amogus_scale = 2.0;
+    load_mesh(&mut scene, "models/amogus/obj/sus.obj", Color::new(1.0, 0.0, 0.0), amogus_scale, amogus_pos);
 
-    scene.add_object(Box::new(Cube {
-        min: Vec3::new(-400.0, -100.0, 500.0),
-        max: Vec3::new(-100.0, 200.0, 800.0),
-        color: Color::new(1.0, 0.2, 0.2),
-    }));
 
-    scene.add_object(Box::new(Cube {
-        min: Vec3::new(-400.0, -100.0, 500.0),
-        max: Vec3::new(-100.0, 200.0, 800.0),
-        color: Color::new(1.0, 0.2, 0.2),
-    }));
+    // scene.add_object(Box::new(Cube {
+    //     min: Vec3::new(-400.0, -100.0, 500.0),
+    //     max: Vec3::new(-100.0, 200.0, 800.0),
+    //     color: Color::new(1.0, 0.2, 0.2),
+    // }));
+
+    // scene.add_object(Box::new(Cube {
+    //     min: Vec3::new(-400.0, -100.0, 500.0),
+    //     max: Vec3::new(-100.0, 200.0, 800.0),
+    //     color: Color::new(1.0, 0.2, 0.2),
+    // }));
+
+    // match Mesh::from_obj(
+    //     "models/teapot.obj", 
+    //     Color::new(0.8, 0.8, 0.2),
+    //     100.0,
+    //     Vec3::new(300.0, 150.0, 700.0)
+    // ) {
+    //     Ok(mesh) => {
+    //         println!("Loaded mesh with {} triangles", mesh.triangles.len());
+    //         scene.add_object(Box::new(mesh));
+    //     },
+    //     Err(e) => {
+    //         println!("Failed to load mesh: {}", e);
+    //     }
+    // }
 
     scene
 }
@@ -486,6 +532,174 @@ impl Camera {
     }
 }
 
+struct Triangle {
+    v0: Vec3,
+    v1: Vec3, 
+    v2: Vec3,
+    normal: Vec3,
+    color: Color,
+}
+
+impl Triangle {
+    fn new(v0: Vec3, v1: Vec3, v2: Vec3, color: Color) -> Self {
+        let edge1 = v1.sub(&v0);
+        let edge2 = v2.sub(&v0);
+        let normal = edge1.cross(&edge2).normalized();
+        
+        Self { v0, v1, v2, normal, color }
+    }
+}
+
+struct Mesh {
+    triangles: Vec<Triangle>,
+    color: Color,
+}
+
+impl Mesh {
+    fn from_obj(path: &str, color: Color, scale: f32, offset: Vec3, rotation_y: f32) -> Result<Self, Box<dyn std::error::Error>> {
+        let obj_file = tobj::load_obj(Path::new(path), &tobj::GPU_LOAD_OPTIONS)?;
+        
+        let (models, _) = obj_file;
+        let mut triangles = Vec::new();
+        
+        for model in models {
+            let mesh = model.mesh;
+            
+            let vertices: Vec<Vec3> = (0..mesh.positions.len() / 3)
+                .map(|i| {
+                    let idx = i * 3;
+                    let unrotated = Vec3::new(
+                        mesh.positions[idx] * scale,
+                        mesh.positions[idx + 1] * scale,
+                        mesh.positions[idx + 2] * scale,
+                    );
+                    
+                    // Apply rotation
+                    let rotated = unrotated.rotate_around_y(rotation_y);
+                    
+                    // Apply offset
+                    Vec3::new(
+                        rotated.x + offset.x,
+                        rotated.y + offset.y,
+                        rotated.z + offset.z,
+                    )
+                })
+                .collect();
+            
+            for i in 0..mesh.indices.len() / 3 {
+                let idx = i * 3;
+                
+                let v0_idx = mesh.indices[idx] as usize;
+                let v1_idx = mesh.indices[idx + 1] as usize;
+                let v2_idx = mesh.indices[idx + 2] as usize;
+                
+                let triangle = Triangle::new(
+                    vertices[v0_idx],
+                    vertices[v1_idx],
+                    vertices[v2_idx],
+                    color,
+                );
+                
+                triangles.push(triangle);
+            }
+        }
+        
+        Ok(Mesh { triangles, color })
+    }
+}
+
+impl Object for Mesh {
+    fn intersect(&self, ray: &Ray) -> Option<f32> {
+        let mut closest_t = None;
+        
+        for triangle in &self.triangles {
+            let edge1 = triangle.v1.sub(&triangle.v0);
+            let edge2 = triangle.v2.sub(&triangle.v0);
+            let h = ray.dir.cross(&edge2);
+            let a = edge1.dot(&h);
+            
+            if a.abs() < EPSILON {
+                continue;
+            }
+            
+            let f = 1.0 / a;
+            let s = ray.start.sub(&triangle.v0);
+            let u = f * s.dot(&h);
+            
+            if u < 0.0 || u > 1.0 {
+                continue;
+            }
+            
+            let q = s.cross(&edge1);
+            let v = f * ray.dir.dot(&q);
+            
+            if v < 0.0 || u + v > 1.0 {
+                continue;
+            }
+            
+            let t = f * edge2.dot(&q);
+            
+            if t > EPSILON {
+                if closest_t.is_none() || t < closest_t.unwrap() {
+                    closest_t = Some(t);
+                }
+            }
+        }
+        
+        closest_t
+    }
+    
+    fn compute_hit(&self, t: f32, ray: &Ray) -> HitData {
+        let pos = ray.at(t);
+        
+        for triangle in &self.triangles {
+            let edge1 = triangle.v1.sub(&triangle.v0);
+            let edge2 = triangle.v2.sub(&triangle.v0);
+            let h = ray.dir.cross(&edge2);
+            let a = edge1.dot(&h);
+            
+            if a.abs() < EPSILON {
+                continue;
+            }
+            
+            let f = 1.0 / a;
+            let s = ray.start.sub(&triangle.v0);
+            let u = f * s.dot(&h);
+            
+            if u < 0.0 || u > 1.0 {
+                continue;
+            }
+            
+            let q = s.cross(&edge1);
+            let v = f * ray.dir.dot(&q);
+            
+            if v < 0.0 || u + v > 1.0 {
+                continue;
+            }
+            
+            let t_check = f * edge2.dot(&q);
+            
+            if (t_check - t).abs() < EPSILON {
+                return HitData {
+                    position: pos,
+                    normal: triangle.normal,
+                    color: self.color,
+                };
+            }
+        }
+        
+        HitData {
+            position: pos,
+            normal: Vec3::new(0.0, 1.0, 0.0),
+            color: self.color,
+        }
+    }
+    
+    fn get_color(&self) -> Color {
+        self.color
+    }
+}
+
 fn main() {
     let mut window = Window::new(
         "Raytracer - ESC to exit",
@@ -507,14 +721,24 @@ fn main() {
         WIDTH as f32 / HEIGHT as f32
     );
 
+    let mut frame_count = 0;
+
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        for y in 0..HEIGHT {
-            for x in 0..WIDTH {
-                let ray = camera.get_ray(x, y, WIDTH, HEIGHT);
-                let color = trace_ray(&ray, &scene);
-                buffer[y * WIDTH + x] = color_to_u32(color);
-            }
-        }
+        let start_time = std::time::Instant::now();
+
+        buffer.par_chunks_mut(WIDTH)
+            .enumerate()
+            .for_each(|(y, row)| {
+                for x in 0..WIDTH {
+                    let ray = camera.get_ray(x, y, WIDTH, HEIGHT);
+                    let color = trace_ray(&ray, &scene);
+                    row[x] = color_to_u32(color);
+                }
+            });
+
+        let render_time = start_time.elapsed().as_millis();
+        frame_count += 1;
+        println!("Frame {}: Rendered in {}ms", frame_count, render_time);
         
         window
             .update_with_buffer(&buffer, WIDTH, HEIGHT)
