@@ -1,6 +1,7 @@
 use minifb::{Key, Window, WindowOptions};
 use std::path::Path;
 use rayon::prelude::*;
+use indicatif::{ProgressBar, ProgressStyle};
 
 
 const WIDTH: usize = 800;
@@ -721,27 +722,35 @@ fn main() {
         WIDTH as f32 / HEIGHT as f32
     );
 
-    let mut frame_count = 0;
+    println!("Rendering frame...");
+    let pb = ProgressBar::new(HEIGHT as u64);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+        .unwrap()
+        .progress_chars("=>-"));
+
+    let start_time = std::time::Instant::now();
+
+    buffer.par_chunks_mut(WIDTH)
+        .enumerate()
+        .for_each(|(y, row)| {
+            for x in 0..WIDTH {
+                let ray = camera.get_ray(x, y, WIDTH, HEIGHT);
+                let color = trace_ray(&ray, &scene);
+                row[x] = color_to_u32(color);
+            }
+            pb.inc(1);
+        });
+
+    pb.finish_with_message("Done!");
+    let render_time = start_time.elapsed().as_millis();
+    println!("Rendered in {}ms", render_time);
+    
+    window
+        .update_with_buffer(&buffer, WIDTH, HEIGHT)
+        .unwrap();
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        let start_time = std::time::Instant::now();
-
-        buffer.par_chunks_mut(WIDTH)
-            .enumerate()
-            .for_each(|(y, row)| {
-                for x in 0..WIDTH {
-                    let ray = camera.get_ray(x, y, WIDTH, HEIGHT);
-                    let color = trace_ray(&ray, &scene);
-                    row[x] = color_to_u32(color);
-                }
-            });
-
-        let render_time = start_time.elapsed().as_millis();
-        frame_count += 1;
-        println!("Frame {}: Rendered in {}ms", frame_count, render_time);
-        
-        window
-            .update_with_buffer(&buffer, WIDTH, HEIGHT)
-            .unwrap();
+        window.update();
     }
 }

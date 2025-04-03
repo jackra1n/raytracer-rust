@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+indicatif = "0.17.11"
 minifb = "0.24"
 rayon = "1.10.0"
 tobj = "4.0.3"
