@@ -106,19 +106,19 @@ impl Color {
     }
 }
 
-impl std::ops::Add for Color {
+impl Add for Color {
     type Output = Color;
     fn add(self, other: Color) -> Color {
         Color::new(self.r + other.r, self.g + other.g, self.b + other.b)
     }
 }
-impl std::ops::Mul<f32> for Color {
+impl Mul<f32> for Color {
     type Output = Color;
     fn mul(self, s: f32) -> Color {
         Color::new(self.r * s, self.g * s, self.b * s)
     }
 }
-impl std::ops::Mul<Color> for Color {
+impl Mul<Color> for Color {
     type Output = Color;
     fn mul(self, o: Color) -> Color {
         Color::new(self.r * o.r, self.g * o.g, self.b * o.b)
