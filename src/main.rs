@@ -550,8 +550,58 @@ impl Triangle {
     }
 }
 
+#[derive(Clone, Copy)]
+struct AABB {
+    min: Vec3,
+    max: Vec3,
+}
+
+impl AABB {
+    fn new(min: Vec3, max: Vec3) -> Self {
+        Self { min, max }
+    }
+
+    fn empty() -> Self {
+        Self {
+            min: Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY),
+            max: Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
+        }
+    }
+
+    fn add_point(&mut self, p: Vec3) {
+        self.min.x = self.min.x.min(p.x);
+        self.min.y = self.min.y.min(p.y);
+        self.min.z = self.min.z.min(p.z);
+        self.max.x = self.max.x.max(p.x);
+        self.max.y = self.max.y.max(p.y);
+        self.max.z = self.max.z.max(p.z);
+    }
+
+    fn intersect(&self, ray: &Ray, mut t_min: f32, mut t_max: f32) -> bool {
+        let inv_dir = Vec3::new(1.0 / ray.dir.x, 1.0 / ray.dir.y, 1.0 / ray.dir.z);
+        
+        let t1 = (self.min.x - ray.start.x) * inv_dir.x;
+        let t2 = (self.max.x - ray.start.x) * inv_dir.x;
+        t_min = t_min.max(t1.min(t2));
+        t_max = t_max.min(t1.max(t2));
+
+        let t1 = (self.min.y - ray.start.y) * inv_dir.y;
+        let t2 = (self.max.y - ray.start.y) * inv_dir.y;
+        t_min = t_min.max(t1.min(t2));
+        t_max = t_max.min(t1.max(t2));
+
+        let t1 = (self.min.z - ray.start.z) * inv_dir.z;
+        let t2 = (self.max.z - ray.start.z) * inv_dir.z;
+        t_min = t_min.max(t1.min(t2));
+        t_max = t_max.min(t1.max(t2));
+
+        t_max > t_min
+    }
+}
+
 struct Mesh {
-    triangles: Vec<Triangle>
+    triangles: Vec<Triangle>,
+    aabb: AABB,
 }
 
 impl Mesh {
@@ -560,6 +610,7 @@ impl Mesh {
         
         let (models, _) = obj_file;
         let mut triangles = Vec::new();
+        let mut mesh_aabb = AABB::empty();
         
         for model in models {
             let mesh = model.mesh;
@@ -573,15 +624,15 @@ impl Mesh {
                         mesh.positions[idx + 2] * scale,
                     );
                     
-                    // Apply rotation
                     let rotated = unrotated.rotate_around_y(rotation_y);
                     
-                    // Apply offset
-                    Vec3::new(
+                    let vertex = Vec3::new(
                         rotated.x + offset.x,
                         rotated.y + offset.y,
                         rotated.z + offset.z,
-                    )
+                    );
+                    mesh_aabb.add_point(vertex);
+                    vertex
                 })
                 .collect();
             
@@ -603,17 +654,20 @@ impl Mesh {
             }
         }
         
-        Ok(Mesh { triangles })
+        Ok(Mesh { triangles, aabb: mesh_aabb })
     }
 }
 
 impl Object for Mesh {
     fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
+        if !self.aabb.intersect(ray, t_min, t_max) {
+            return None;
+        }
+
         let mut closest_hit_data: Option<HitData> = None;
         let mut current_t_max = t_max;
 
         for triangle in &self.triangles {
-            // --- möller–Trumbore intersection test ---
             let edge1 = triangle.v1 - triangle.v0;
             let edge2 = triangle.v2 - triangle.v0;
             let h = ray.dir.cross(edge2);
@@ -639,7 +693,6 @@ impl Object for Mesh {
             }
 
             let t = f * edge2.dot(q);
-            // --- end Möller–Trumbore ---
 
             if t > t_min && t < current_t_max {
                 let hit_data = HitData {
