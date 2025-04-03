@@ -2,12 +2,15 @@ use minifb::{Key, Window, WindowOptions};
 use std::path::Path;
 use rayon::prelude::*;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::ops::{Add, Sub, Mul};
 
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
 const BACKGROUND: f32 = 1e9;
 const EPSILON: f32 = 1e-6;
+
+
 #[derive(Clone, Copy)]
 struct Vec3 {
     x: f32,
@@ -19,19 +22,12 @@ impl Vec3 {
     fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
-    fn add(&self, o: &Vec3) -> Vec3 {
-        Vec3::new(self.x + o.x, self.y + o.y, self.z + o.z)
-    }
-    fn sub(&self, o: &Vec3) -> Vec3 {
-        Vec3::new(self.x - o.x, self.y - o.y, self.z - o.z)
-    }
-    fn mul(&self, s: f32) -> Vec3 {
-        Vec3::new(self.x * s, self.y * s, self.z * s)
-    }
-    fn dot(&self, o: &Vec3) -> f32 {
+
+    fn dot(&self, o: Vec3) -> f32 {
         self.x * o.x + self.y * o.y + self.z * o.z
     }
-    fn cross(&self, o: &Vec3) -> Vec3 {
+
+    fn cross(&self, o: Vec3) -> Vec3 {
         Vec3::new(
             self.y * o.z - self.z * o.y,
             self.z * o.x - self.x * o.z,
@@ -41,17 +37,17 @@ impl Vec3 {
     fn length(&self) -> f32 {
         (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
     }
-    fn normalized(&self) -> Vec3 {
+    fn normalized(self) -> Vec3 {
         let len = self.length();
         if len < EPSILON {
-            *self
+            self
         } else {
-            self.mul(1.0 / len)
+            self * (1.0 / len)
         }
     }
 
-    fn distance(a: &Vec3, b: &Vec3) -> f32 {
-        a.sub(b).length()
+    fn distance(a: Vec3, b: Vec3) -> f32 {
+        (a - b).length()
     }
 
     fn rotate_around_y(&self, angle_degrees: f32) -> Vec3 {
@@ -66,6 +62,29 @@ impl Vec3 {
         }
     }
 }
+
+impl Add for Vec3 {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        Self { x: self.x + other.x, y: self.y + other.y, z: self.z + other.z }
+    }
+}
+
+impl Sub for Vec3 {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        Self { x: self.x - other.x, y: self.y - other.y, z: self.z - other.z }
+    }
+}
+
+impl Mul<f32> for Vec3 {
+    type Output = Self;
+    fn mul(self, scalar: f32) -> Self {
+        Self { x: self.x * scalar, y: self.y * scalar, z: self.z * scalar }
+    }
+}
+
+
 
 #[derive(Clone, Copy)]
 struct Color {
@@ -128,7 +147,7 @@ impl Ray {
         }
     }
     fn at(&self, t: f32) -> Vec3 {
-        self.start.add(&self.dir.mul(t))
+        self.start + self.dir * t
     }
 }
 
@@ -152,10 +171,10 @@ struct Sphere {
 
 impl Object for Sphere {
     fn intersect(&self, ray: &Ray) -> Option<f32> {
-        let oc = ray.start.sub(&self.center);
-        let a = ray.dir.dot(&ray.dir);
-        let b = 2.0 * oc.dot(&ray.dir);
-        let c = oc.dot(&oc) - self.radius * self.radius;
+        let oc = ray.start - self.center;
+        let a = ray.dir.dot(ray.dir);
+        let b = 2.0 * oc.dot(ray.dir);
+        let c = oc.dot(oc) - self.radius * self.radius;
         let disc = b * b - 4.0 * a * c;
         if disc < 0.0 {
             return None;
@@ -177,7 +196,7 @@ impl Object for Sphere {
 
     fn compute_hit(&self, t: f32, ray: &Ray) -> HitData {
         let pos = ray.at(t);
-        let normal = pos.sub(&self.center).normalized();
+        let normal = (pos - self.center).normalized();
         HitData {
             position: pos,
             normal,
@@ -280,16 +299,16 @@ struct Plane {
 
 impl Object for Plane {
     fn intersect(&self, ray: &Ray) -> Option<f32> {
-        let v1 = self.p2.sub(&self.p1);
-        let v2 = self.p3.sub(&self.p1);
-        let normal = v1.cross(&v2);
+        let v1 = self.p2 - self.p1;
+        let v2 = self.p3 - self.p1;
+        let normal = v1.cross(v2);
         
-        let denom = normal.dot(&ray.dir);
+        let denom = normal.dot(ray.dir);
         if denom.abs() < EPSILON {
             return None;
         }
         
-        let t = normal.dot(&self.p1.sub(&ray.start)) / denom;
+        let t = normal.dot(self.p1 - ray.start) / denom;
         if t < EPSILON {
             return None;
         }
@@ -300,15 +319,15 @@ impl Object for Plane {
         
         let hit_point = ray.at(t);
         
-        let edge1 = self.p2.sub(&self.p1);
-        let edge2 = self.p3.sub(&self.p1);
-        let hit_vec = hit_point.sub(&self.p1);
+        let edge1 = self.p2 - self.p1;
+        let edge2 = self.p3 - self.p1;
+        let hit_vec = hit_point - self.p1;
         
-        let dot00 = edge1.dot(&edge1);
-        let dot01 = edge1.dot(&edge2);
-        let dot02 = edge1.dot(&hit_vec);
-        let dot11 = edge2.dot(&edge2);
-        let dot12 = edge2.dot(&hit_vec);
+        let dot00 = edge1.dot(edge1);
+        let dot01 = edge1.dot(edge2);
+        let dot02 = edge1.dot(hit_vec);
+        let dot11 = edge2.dot(edge2);
+        let dot12 = edge2.dot(hit_vec);
         
         let inv_denom = 1.0 / (dot00 * dot11 - dot01 * dot01);
         let u = (dot11 * dot02 - dot01 * dot12) * inv_denom;
@@ -325,8 +344,8 @@ impl Object for Plane {
         let pos = ray.at(t);
         let n = self
             .p2
-            .sub(&self.p1)
-            .cross(&self.p3.sub(&self.p1))
+            .sub(self.p1)
+            .cross(self.p3 - self.p1)
             .normalized();
         HitData {
             position: pos,
@@ -461,12 +480,12 @@ fn trace_ray(ray: &Ray, scene: &Scene) -> Color {
         final_color = final_color + (hd.color * ambient);
 
         for light in &scene.lights {
-            let to_light = light.pos.sub(&hd.position).normalized();
+            let to_light = (light.pos - hd.position).normalized();
 
             let shadow_epsilon = 0.001;
-            let shadow_origin = hd.position.add(&to_light.mul(shadow_epsilon));
+            let shadow_origin = hd.position + (to_light * shadow_epsilon);
 
-            let dist_to_light = Vec3::distance(&hd.position, &light.pos);
+            let dist_to_light = Vec3::distance(hd.position, light.pos);
             let mut in_shadow = false;
 
             let shadow_ray = Ray::new(shadow_origin, to_light);
@@ -481,7 +500,7 @@ fn trace_ray(ray: &Ray, scene: &Scene) -> Color {
             }
 
             if !in_shadow {
-                let diff = hd.normal.dot(&to_light).max(0.0);
+                let diff = hd.normal.dot(to_light).max(0.0);
                 final_color = final_color + (hd.color * light.color * (diff * light.strength));
             }
         }
@@ -512,9 +531,9 @@ impl Camera {
     }
     
     fn get_ray(&self, x: usize, y: usize, width: usize, height: usize) -> Ray {
-        let forward = self.look_at.sub(&self.position).normalized();
-        let right = forward.cross(&self.up).normalized();
-        let true_up = right.cross(&forward).normalized();
+        let forward = (self.look_at - self.position).normalized();
+        let right = forward.cross(self.up).normalized();
+        let true_up = right.cross(forward).normalized();
         
         let ndc_x = (2.0 * x as f32 / width as f32) - 1.0;
         let ndc_y = 1.0 - (2.0 * y as f32 / height as f32);
@@ -522,12 +541,9 @@ impl Camera {
         let fov_rad = self.fov * std::f32::consts::PI / 180.0;
         let half_height = (fov_rad / 2.0).tan();
         let half_width = half_height * self.aspect;
-        
-        let ray_dir = forward.add(
-            &right.mul(ndc_x * half_width).add(
-                &true_up.mul(ndc_y * half_height)
-            )
-        ).normalized();
+
+        let offset = right * (ndc_x * half_width) + true_up * (ndc_y * half_height);
+        let ray_dir = (forward + offset).normalized();
         
         Ray::new(self.position, ray_dir)
     }
@@ -543,9 +559,9 @@ struct Triangle {
 
 impl Triangle {
     fn new(v0: Vec3, v1: Vec3, v2: Vec3, color: Color) -> Self {
-        let edge1 = v1.sub(&v0);
-        let edge2 = v2.sub(&v0);
-        let normal = edge1.cross(&edge2).normalized();
+        let edge1 = v1 - v0;
+        let edge2 = v2 - v0;
+        let normal = edge1.cross(edge2).normalized();
         
         Self { v0, v1, v2, normal, color }
     }
@@ -614,36 +630,34 @@ impl Object for Mesh {
         let mut closest_t = None;
         
         for triangle in &self.triangles {
-            let edge1 = triangle.v1.sub(&triangle.v0);
-            let edge2 = triangle.v2.sub(&triangle.v0);
-            let h = ray.dir.cross(&edge2);
-            let a = edge1.dot(&h);
+            let edge1 = triangle.v1 - triangle.v0;
+            let edge2 = triangle.v2 - triangle.v0;
+            let h = ray.dir.cross(edge2);
+            let a = edge1.dot(h);
             
             if a.abs() < EPSILON {
                 continue;
             }
             
             let f = 1.0 / a;
-            let s = ray.start.sub(&triangle.v0);
-            let u = f * s.dot(&h);
+            let s = ray.start - triangle.v0;
+            let u = f * s.dot(h);
             
             if u < 0.0 || u > 1.0 {
                 continue;
             }
             
-            let q = s.cross(&edge1);
-            let v = f * ray.dir.dot(&q);
+            let q = s.cross(edge1);
+            let v = f * ray.dir.dot(q);
             
             if v < 0.0 || u + v > 1.0 {
                 continue;
             }
             
-            let t = f * edge2.dot(&q);
+            let t = f * edge2.dot(q);
             
-            if t > EPSILON {
-                if closest_t.is_none() || t < closest_t.unwrap() {
-                    closest_t = Some(t);
-                }
+            if t > EPSILON && (closest_t.is_none() || t < closest_t.unwrap()) {
+                closest_t = Some(t);
             }
         }
         
@@ -654,31 +668,31 @@ impl Object for Mesh {
         let pos = ray.at(t);
         
         for triangle in &self.triangles {
-            let edge1 = triangle.v1.sub(&triangle.v0);
-            let edge2 = triangle.v2.sub(&triangle.v0);
-            let h = ray.dir.cross(&edge2);
-            let a = edge1.dot(&h);
+            let edge1 = triangle.v1 - triangle.v0;
+            let edge2 = triangle.v2 - triangle.v0;
+            let h = ray.dir.cross(edge2);
+            let a = edge1.dot(h);
             
             if a.abs() < EPSILON {
                 continue;
             }
             
             let f = 1.0 / a;
-            let s = ray.start.sub(&triangle.v0);
-            let u = f * s.dot(&h);
+            let s = ray.start - triangle.v0;
+            let u = f * s.dot(h);
             
             if u < 0.0 || u > 1.0 {
                 continue;
             }
             
-            let q = s.cross(&edge1);
-            let v = f * ray.dir.dot(&q);
+            let q = s.cross(edge1);
+            let v = f * ray.dir.dot(q);
             
             if v < 0.0 || u + v > 1.0 {
                 continue;
             }
             
-            let t_check = f * edge2.dot(&q);
+            let t_check = f * edge2.dot(q);
             
             if (t_check - t).abs() < EPSILON {
                 return HitData {
