@@ -7,7 +7,6 @@ use std::ops::{Add, Sub, Mul};
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
-const BACKGROUND: f32 = 1e9;
 const EPSILON: f32 = 1e-6;
 
 
@@ -152,12 +151,11 @@ impl Ray {
 }
 
 trait Object {
-    fn intersect(&self, ray: &Ray) -> Option<f32>;
-    fn compute_hit(&self, t: f32, ray: &Ray) -> HitData;
-    fn get_color(&self) -> Color;
+    fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData>;
 }
 
 struct HitData {
+    t: f32,
     position: Vec3,
     normal: Vec3,
     color: Color,
@@ -170,42 +168,38 @@ struct Sphere {
 }
 
 impl Object for Sphere {
-    fn intersect(&self, ray: &Ray) -> Option<f32> {
+    fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
         let oc = ray.start - self.center;
         let a = ray.dir.dot(ray.dir);
         let b = 2.0 * oc.dot(ray.dir);
         let c = oc.dot(oc) - self.radius * self.radius;
         let disc = b * b - 4.0 * a * c;
+
         if disc < 0.0 {
             return None;
         }
+
         let sqrt_disc = disc.sqrt();
+
         let t1 = (-b - sqrt_disc) / (2.0 * a);
         let t2 = (-b + sqrt_disc) / (2.0 * a);
 
-        let eps = 0.0001;
-        let t = if t1 > eps && t1 < t2 {
+        let t = if t1 > t_min && t1 < t_max {
             t1
-        } else if t2 > eps {
+        } else if t2 > t_min && t2 < t_max {
             t2
         } else {
             return None;
         };
-        Some(t)
-    }
 
-    fn compute_hit(&self, t: f32, ray: &Ray) -> HitData {
-        let pos = ray.at(t);
-        let normal = (pos - self.center).normalized();
-        HitData {
-            position: pos,
+        let position = ray.at(t);
+        let normal = (position - self.center).normalized();
+        Some(HitData {
+            t,
+            position,
             normal,
             color: self.color,
-        }
-    }
-
-    fn get_color(&self) -> Color {
-        self.color
+        })
     }
 }
 
@@ -215,77 +209,79 @@ struct Cube {
     color: Color,
 }
 
+impl Cube {
+    fn new_pos_size(bottom_center: Vec3, size: Vec3, color: Color) -> Self {
+        let half_size = size * 0.5;
+
+        let center = bottom_center + Vec3::new(0.0, half_size.y, 0.0);
+
+        let min = center - half_size;
+        let max = center + half_size;
+
+        Self { min, max, color }
+    }
+}
+
 impl Object for Cube {
-    fn intersect(&self, ray: &Ray) -> Option<f32> {
-        let mut tmin = (self.min.x - ray.start.x) / ray.dir.x;
-        let mut tmax = (self.max.x - ray.start.x) / ray.dir.x;
-        
-        if tmin > tmax { std::mem::swap(&mut tmin, &mut tmax); }
-        
-        let mut tymin = (self.min.y - ray.start.y) / ray.dir.y;
-        let mut tymax = (self.max.y - ray.start.y) / ray.dir.y;
-        
-        if tymin > tymax { std::mem::swap(&mut tymin, &mut tymax); }
-        
-        if tmin > tymax || tymin > tmax { return None; }
-        
-        if tymin > tmin { tmin = tymin; }
-        if tymax < tmax { tmax = tymax; }
-        
-        let mut tzmin = (self.min.z - ray.start.z) / ray.dir.z;
-        let mut tzmax = (self.max.z - ray.start.z) / ray.dir.z;
-        
-        if tzmin > tzmax { std::mem::swap(&mut tzmin, &mut tzmax); }
-        
-        if tmin > tzmax || tzmin > tmax { return None; }
-        
-        if tzmin > tmin { tmin = tzmin; }
-        if tzmax < tmax { tmax = tzmax; }
-        
-        if tmin > EPSILON { 
-            Some(tmin) 
-        } else if tmax > EPSILON { 
-            Some(tmax) 
-        } else { 
-            None 
+    fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
+        let inv_dir = Vec3::new(1.0 / ray.dir.x, 1.0 / ray.dir.y, 1.0 / ray.dir.z);
+        let tx1 = (self.min.x - ray.start.x) * inv_dir.x;
+        let tx2 = (self.max.x - ray.start.x) * inv_dir.x;
+
+        let mut t_enter = tx1.min(tx2);
+        let mut t_exit = tx1.max(tx2);
+
+        let ty1 = (self.min.y - ray.start.y) * inv_dir.y;
+        let ty2 = (self.max.y - ray.start.y) * inv_dir.y;
+
+        t_enter = t_enter.max(ty1.min(ty2));
+        t_exit = t_exit.min(ty1.max(ty2));
+
+        let tz1 = (self.min.z - ray.start.z) * inv_dir.z;
+        let tz2 = (self.max.z - ray.start.z) * inv_dir.z;
+
+        t_enter = t_enter.max(tz1.min(tz2));
+        t_exit = t_exit.min(tz1.max(tz2));
+
+        if t_exit < t_enter || t_exit <= t_min || t_enter >= t_max {
+             return None;
         }
-    }
-    
-    fn compute_hit(&self, t: f32, ray: &Ray) -> HitData {
-        let pos = ray.at(t);
-        
-        let x_dist_min = (pos.x - self.min.x).abs();
-        let x_dist_max = (pos.x - self.max.x).abs();
-        let y_dist_min = (pos.y - self.min.y).abs();
-        let y_dist_max = (pos.y - self.max.y).abs();
-        let z_dist_min = (pos.z - self.min.z).abs();
-        let z_dist_max = (pos.z - self.max.z).abs();
-        
-        let min_dist = x_dist_min.min(x_dist_max).min(y_dist_min).min(y_dist_max).min(z_dist_min).min(z_dist_max);
-        
-        let normal = if min_dist == x_dist_min {
-            Vec3::new(-1.0, 0.0, 0.0)
-        } else if min_dist == x_dist_max {
-            Vec3::new(1.0, 0.0, 0.0)
-        } else if min_dist == y_dist_min {
-            Vec3::new(0.0, -1.0, 0.0)
-        } else if min_dist == y_dist_max {
-            Vec3::new(0.0, 1.0, 0.0)
-        } else if min_dist == z_dist_min {
-            Vec3::new(0.0, 0.0, -1.0)
+
+        let t = if t_enter > t_min { t_enter } else { t_exit };
+
+        if t >= t_max {
+             return None;
+        }
+
+        let position = ray.at(t);
+
+        let p = position;
+        let c = (self.min + self.max) * 0.5;
+        let d = (self.max - self.min) * 0.5;
+
+        let dx = (p.x - c.x) / d.x;
+        let dy = (p.y - c.y) / d.y;
+        let dz = (p.z - c.z) / d.z;
+
+        let ax = dx.abs();
+        let ay = dy.abs();
+        let az = dz.abs();
+
+        let normal = if ax > ay && ax > az {
+            Vec3::new(dx.signum(), 0.0, 0.0)
+        } else if ay > az {
+            Vec3::new(0.0, dy.signum(), 0.0)
         } else {
-            Vec3::new(0.0, 0.0, 1.0)
+            Vec3::new(0.0, 0.0, dz.signum())
         };
-        
-        HitData {
-            position: pos,
-            normal,
-            color: self.color,
-        }
-    }
-    
-    fn get_color(&self) -> Color {
-        self.color
+
+
+        Some(HitData {
+             t,
+             position,
+             normal,
+             color: self.color,
+        })
     }
 }
 
@@ -298,64 +294,60 @@ struct Plane {
 }
 
 impl Object for Plane {
-    fn intersect(&self, ray: &Ray) -> Option<f32> {
+    fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
         let v1 = self.p2 - self.p1;
         let v2 = self.p3 - self.p1;
-        let normal = v1.cross(v2);
-        
+        let normal = v1.cross(v2).normalized();
+
         let denom = normal.dot(ray.dir);
         if denom.abs() < EPSILON {
             return None;
         }
-        
+
         let t = normal.dot(self.p1 - ray.start) / denom;
-        if t < EPSILON {
-            return None;
+
+        if t <= t_min || t >= t_max {
+             return None;
         }
-        
+
         if !self.limited {
-            return Some(t);
+            let position = ray.at(t);
+            return Some(HitData {
+                t,
+                position,
+                normal,
+                color: self.color,
+            });
         }
-        
+
         let hit_point = ray.at(t);
-        
         let edge1 = self.p2 - self.p1;
         let edge2 = self.p3 - self.p1;
         let hit_vec = hit_point - self.p1;
-        
+
         let dot00 = edge1.dot(edge1);
         let dot01 = edge1.dot(edge2);
         let dot02 = edge1.dot(hit_vec);
         let dot11 = edge2.dot(edge2);
         let dot12 = edge2.dot(hit_vec);
-        
-        let inv_denom = 1.0 / (dot00 * dot11 - dot01 * dot01);
+
+        let denom_bary = dot00 * dot11 - dot01 * dot01;
+        if denom_bary.abs() < EPSILON { return None; }
+
+        let inv_denom = 1.0 / denom_bary;
         let u = (dot11 * dot02 - dot01 * dot12) * inv_denom;
         let v = (dot00 * dot12 - dot01 * dot02) * inv_denom;
-        
+
         if u >= 0.0 && v >= 0.0 && u + v <= 1.0 {
-            Some(t)
+            Some(HitData {
+                t,
+                position: hit_point,
+                normal,
+                color: self.color,
+            })
         } else {
             None
         }
-    }
-
-    fn compute_hit(&self, t: f32, ray: &Ray) -> HitData {
-        let pos = ray.at(t);
-        let n = self
-            .p2
-            .sub(self.p1)
-            .cross(self.p3 - self.p1)
-            .normalized();
-        HitData {
-            position: pos,
-            normal: n,
-            color: self.color,
-        }
-    }
-
-    fn get_color(&self) -> Color {
-        self.color
     }
 }
 
@@ -412,7 +404,7 @@ fn init_scene() -> Scene {
     scene.add_light(Light::new(Vec3::new(1300.0, 700.0, -1000.0), Color::new(0.5, 0.5, 0.5), 1.0));
 
     scene.add_object(Box::new(Sphere {
-        center: Vec3::new(0.0, 0.0, 800.0),
+        center: Vec3::new(400.0, 0.0, 200.0),
         radius: 300.0,
         color: Color::new(0.0, 1.0, 0.0),
     }));
@@ -430,11 +422,17 @@ fn init_scene() -> Scene {
     load_mesh(&mut scene, "models/amogus/obj/sus.obj", Color::new(1.0, 0.0, 0.0), amogus_scale, amogus_pos);
 
 
-    // scene.add_object(Box::new(Cube {
-    //     min: Vec3::new(-400.0, -100.0, 500.0),
-    //     max: Vec3::new(-100.0, 200.0, 800.0),
-    //     color: Color::new(1.0, 0.2, 0.2),
-    // }));
+    scene.add_object(Box::new(Cube::new_pos_size(
+        Vec3::new(300.0, 400.0, 0.0),
+        Vec3::new(100.0, 100.0, 100.0),
+        Color::new(1.0, 1.0, 0.0),    
+    )));
+
+    scene.add_object(Box::new(Cube::new_pos_size(
+        Vec3::new(-200.0, 0.0, -200.0),
+        Vec3::new(100.0, 100.0, 100.0),
+        Color::new(1.0, 0.0, 1.0),
+    )));
 
     // scene.add_object(Box::new(Cube {
     //     min: Vec3::new(-400.0, -100.0, 500.0),
@@ -442,38 +440,25 @@ fn init_scene() -> Scene {
     //     color: Color::new(1.0, 0.2, 0.2),
     // }));
 
-    // match Mesh::from_obj(
-    //     "models/teapot.obj", 
-    //     Color::new(0.8, 0.8, 0.2),
-    //     100.0,
-    //     Vec3::new(300.0, 150.0, 700.0)
-    // ) {
-    //     Ok(mesh) => {
-    //         println!("Loaded mesh with {} triangles", mesh.triangles.len());
-    //         scene.add_object(Box::new(mesh));
-    //     },
-    //     Err(e) => {
-    //         println!("Failed to load mesh: {}", e);
-    //     }
-    // }
+    let teapot_pos = Vec3::new(300.0, 150.0, 700.0);
+    let teapot_scale = 100.0;
+    load_mesh(&mut scene, "models/teapot/teapot.obj", Color::new(0.0, 0.0, 1.0), teapot_scale, teapot_pos);
 
     scene
 }
 
 fn trace_ray(ray: &Ray, scene: &Scene) -> Color {
-    let mut nearest_t = BACKGROUND;
-    let mut hit_data: Option<HitData> = None;
+    let mut closest_hit: Option<HitData> = None;
+    let mut t_max = f32::INFINITY;
 
     for obj in &scene.objects {
-        if let Some(t) = obj.intersect(ray) {
-            if t < nearest_t {
-                nearest_t = t;
-                hit_data = Some(obj.compute_hit(t, ray));
-            }
+        if let Some(hit) = obj.intersect(ray, EPSILON, t_max) {
+             t_max = hit.t;
+             closest_hit = Some(hit);
         }
     }
 
-    if let Some(hd) = hit_data {
+    if let Some(hd) = closest_hit {
         let ambient = 0.1;
         let mut final_color = Color::new(0.0, 0.0, 0.0);
 
@@ -491,11 +476,9 @@ fn trace_ray(ray: &Ray, scene: &Scene) -> Color {
             let shadow_ray = Ray::new(shadow_origin, to_light);
 
             for obj2 in &scene.objects {
-                if let Some(t_shadow) = obj2.intersect(&shadow_ray) {
-                    if t_shadow < dist_to_light {
-                        in_shadow = true;
-                        break;
-                    }
+                if let Some(_) = obj2.intersect(&shadow_ray, EPSILON, dist_to_light) {
+                    in_shadow = true;
+                    break;
                 }
             }
 
@@ -568,8 +551,7 @@ impl Triangle {
 }
 
 struct Mesh {
-    triangles: Vec<Triangle>,
-    color: Color,
+    triangles: Vec<Triangle>
 }
 
 impl Mesh {
@@ -621,97 +603,58 @@ impl Mesh {
             }
         }
         
-        Ok(Mesh { triangles, color })
+        Ok(Mesh { triangles })
     }
 }
 
 impl Object for Mesh {
-    fn intersect(&self, ray: &Ray) -> Option<f32> {
-        let mut closest_t = None;
-        
+    fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
+        let mut closest_hit_data: Option<HitData> = None;
+        let mut current_t_max = t_max;
+
         for triangle in &self.triangles {
+            // --- möller–Trumbore intersection test ---
             let edge1 = triangle.v1 - triangle.v0;
             let edge2 = triangle.v2 - triangle.v0;
             let h = ray.dir.cross(edge2);
             let a = edge1.dot(h);
-            
+
             if a.abs() < EPSILON {
                 continue;
             }
-            
+
             let f = 1.0 / a;
             let s = ray.start - triangle.v0;
             let u = f * s.dot(h);
-            
+
             if u < 0.0 || u > 1.0 {
                 continue;
             }
-            
+
             let q = s.cross(edge1);
             let v = f * ray.dir.dot(q);
-            
+
             if v < 0.0 || u + v > 1.0 {
                 continue;
             }
-            
+
             let t = f * edge2.dot(q);
-            
-            if t > EPSILON && (closest_t.is_none() || t < closest_t.unwrap()) {
-                closest_t = Some(t);
-            }
-        }
-        
-        closest_t
-    }
-    
-    fn compute_hit(&self, t: f32, ray: &Ray) -> HitData {
-        let pos = ray.at(t);
-        
-        for triangle in &self.triangles {
-            let edge1 = triangle.v1 - triangle.v0;
-            let edge2 = triangle.v2 - triangle.v0;
-            let h = ray.dir.cross(edge2);
-            let a = edge1.dot(h);
-            
-            if a.abs() < EPSILON {
-                continue;
-            }
-            
-            let f = 1.0 / a;
-            let s = ray.start - triangle.v0;
-            let u = f * s.dot(h);
-            
-            if u < 0.0 || u > 1.0 {
-                continue;
-            }
-            
-            let q = s.cross(edge1);
-            let v = f * ray.dir.dot(q);
-            
-            if v < 0.0 || u + v > 1.0 {
-                continue;
-            }
-            
-            let t_check = f * edge2.dot(q);
-            
-            if (t_check - t).abs() < EPSILON {
-                return HitData {
-                    position: pos,
+            // --- end Möller–Trumbore ---
+
+            if t > t_min && t < current_t_max {
+                let hit_data = HitData {
+                    t,
+                    position: ray.at(t),
                     normal: triangle.normal,
-                    color: self.color,
+                    color: triangle.color,
                 };
+
+                closest_hit_data = Some(hit_data);
+                current_t_max = t;
             }
         }
-        
-        HitData {
-            position: pos,
-            normal: Vec3::new(0.0, 1.0, 0.0),
-            color: self.color,
-        }
-    }
-    
-    fn get_color(&self) -> Color {
-        self.color
+
+        closest_hit_data
     }
 }
 
