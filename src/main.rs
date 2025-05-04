@@ -599,22 +599,135 @@ impl AABB {
     }
 }
 
+struct BVHNode {
+    bounds: AABB,
+    left: Option<Box<BVHNode>>,
+    right: Option<Box<BVHNode>>,
+    triangle_indices: Vec<usize>,
+}
+
+impl BVHNode {
+    fn new(triangles: &[Triangle], indices: &mut [usize], depth: usize) -> Self {
+        let num_triangles = indices.len();
+        let mut bounds = AABB::empty();
+        for &idx in indices.iter() {
+            let tri = &triangles[idx];
+            bounds.add_point(tri.v0);
+            bounds.add_point(tri.v1);
+            bounds.add_point(tri.v2);
+        }
+
+        if num_triangles <= 4 || depth >= 20 {
+            return BVHNode {
+                bounds,
+                left: None,
+                right: None,
+                triangle_indices: indices.to_vec(),
+            };
+        }
+
+        let extent = bounds.max - bounds.min;
+        let axis = if extent.x > extent.y && extent.x > extent.z { 0 }
+                   else if extent.y > extent.z { 1 }
+                   else { 2 };
+
+        indices.sort_unstable_by(|&a, &b| {
+            let centroid_a = (triangles[a].v0 + triangles[a].v1 + triangles[a].v2) * (1.0/3.0);
+            let centroid_b = (triangles[b].v0 + triangles[b].v1 + triangles[b].v2) * (1.0/3.0);
+            let val_a = match axis { 0 => centroid_a.x, 1 => centroid_a.y, _ => centroid_a.z };
+            let val_b = match axis { 0 => centroid_b.x, 1 => centroid_b.y, _ => centroid_b.z };
+            val_a.partial_cmp(&val_b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let mid = num_triangles / 2;
+        let (left_indices, right_indices) = indices.split_at_mut(mid);
+
+        let left_child = Box::new(BVHNode::new(triangles, left_indices, depth + 1));
+        let right_child = Box::new(BVHNode::new(triangles, right_indices, depth + 1));
+
+        BVHNode {
+            bounds,
+            left: Some(left_child),
+            right: Some(right_child),
+            triangle_indices: Vec::new(),
+        }
+    }
+
+    fn intersect_recursive<'a>(
+        &'a self,
+        ray: &Ray,
+        triangles: &'a [Triangle],
+        t_min: f32,
+        mut t_max: f32,
+    ) -> Option<HitData> {
+        if !self.bounds.intersect(ray, t_min, t_max) {
+            return None;
+        }
+
+        if self.left.is_none() {
+            let mut closest_hit: Option<HitData> = None;
+            for &idx in &self.triangle_indices {
+                let triangle = &triangles[idx];
+                // möller–Trumbore intersection test (copied from Mesh::intersect)
+                let edge1 = triangle.v1 - triangle.v0;
+                let edge2 = triangle.v2 - triangle.v0;
+                let h = ray.dir.cross(edge2);
+                let a = edge1.dot(h);
+
+                if a.abs() < EPSILON { continue; }
+                let f = 1.0 / a;
+                let s = ray.start - triangle.v0;
+                let u = f * s.dot(h);
+                if u < 0.0 || u > 1.0 { continue; }
+                let q = s.cross(edge1);
+                let v = f * ray.dir.dot(q);
+                if v < 0.0 || u + v > 1.0 { continue; }
+
+                let t = f * edge2.dot(q);
+                if t > t_min && t < t_max {
+                    let hit_data = HitData {
+                        t,
+                        position: ray.at(t),
+                        normal: triangle.normal,
+                        color: triangle.color,
+                    };
+                    t_max = t;
+                    closest_hit = Some(hit_data);
+                }
+            }
+            return closest_hit;
+        }
+
+        let hit_left = self.left.as_ref().unwrap().intersect_recursive(ray, triangles, t_min, t_max);
+        if let Some(ref hit) = hit_left {
+            t_max = hit.t;
+        }
+        let hit_right = self.right.as_ref().unwrap().intersect_recursive(ray, triangles, t_min, t_max);
+
+        match (hit_left, hit_right) {
+            (Some(l), Some(r)) => if l.t < r.t { Some(l) } else { Some(r) },
+            (Some(l), None) => Some(l),
+            (None, Some(r)) => Some(r),
+            (None, None) => None,
+        }
+    }
+}
+
 struct Mesh {
     triangles: Vec<Triangle>,
-    aabb: AABB,
+    bvh: BVHNode,
 }
 
 impl Mesh {
     fn from_obj(path: &str, color: Color, scale: f32, offset: Vec3, rotation_y: f32) -> Result<Self, Box<dyn std::error::Error>> {
         let obj_file = tobj::load_obj(Path::new(path), &tobj::GPU_LOAD_OPTIONS)?;
-        
+
         let (models, _) = obj_file;
         let mut triangles = Vec::new();
-        let mut mesh_aabb = AABB::empty();
-        
+
         for model in models {
             let mesh = model.mesh;
-            
+
             let vertices: Vec<Vec3> = (0..mesh.positions.len() / 3)
                 .map(|i| {
                     let idx = i * 3;
@@ -623,91 +736,59 @@ impl Mesh {
                         mesh.positions[idx + 1] * scale,
                         mesh.positions[idx + 2] * scale,
                     );
-                    
+
                     let rotated = unrotated.rotate_around_y(rotation_y);
-                    
+
                     let vertex = Vec3::new(
                         rotated.x + offset.x,
                         rotated.y + offset.y,
                         rotated.z + offset.z,
                     );
-                    mesh_aabb.add_point(vertex);
                     vertex
                 })
                 .collect();
-            
+
             for i in 0..mesh.indices.len() / 3 {
                 let idx = i * 3;
-                
+
                 let v0_idx = mesh.indices[idx] as usize;
                 let v1_idx = mesh.indices[idx + 1] as usize;
                 let v2_idx = mesh.indices[idx + 2] as usize;
-                
+
+                if v0_idx >= vertices.len() || v1_idx >= vertices.len() || v2_idx >= vertices.len() {
+                     eprintln!("Warning: Vertex index out of bounds in OBJ file '{}'. Skipping triangle.", path);
+                     continue;
+                }
+
                 let triangle = Triangle::new(
                     vertices[v0_idx],
                     vertices[v1_idx],
                     vertices[v2_idx],
                     color,
                 );
-                
+
                 triangles.push(triangle);
             }
         }
-        
-        Ok(Mesh { triangles, aabb: mesh_aabb })
+
+        if triangles.is_empty() {
+             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "No valid triangles loaded from OBJ")));
+        }
+
+        println!("Building BVH for {} triangles...", triangles.len());
+        let start_time = std::time::Instant::now();
+        let mut indices: Vec<usize> = (0..triangles.len()).collect();
+        let bvh = BVHNode::new(&triangles, &mut indices, 0);
+        let build_time = start_time.elapsed().as_millis();
+        println!("BVH built in {}ms", build_time);
+
+        Ok(Mesh { triangles, bvh })
     }
 }
 
 impl Object for Mesh {
     fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
-        if !self.aabb.intersect(ray, t_min, t_max) {
-            return None;
-        }
-
-        let mut closest_hit_data: Option<HitData> = None;
-        let mut current_t_max = t_max;
-
-        for triangle in &self.triangles {
-            let edge1 = triangle.v1 - triangle.v0;
-            let edge2 = triangle.v2 - triangle.v0;
-            let h = ray.dir.cross(edge2);
-            let a = edge1.dot(h);
-
-            if a.abs() < EPSILON {
-                continue;
-            }
-
-            let f = 1.0 / a;
-            let s = ray.start - triangle.v0;
-            let u = f * s.dot(h);
-
-            if u < 0.0 || u > 1.0 {
-                continue;
-            }
-
-            let q = s.cross(edge1);
-            let v = f * ray.dir.dot(q);
-
-            if v < 0.0 || u + v > 1.0 {
-                continue;
-            }
-
-            let t = f * edge2.dot(q);
-
-            if t > t_min && t < current_t_max {
-                let hit_data = HitData {
-                    t,
-                    position: ray.at(t),
-                    normal: triangle.normal,
-                    color: triangle.color,
-                };
-
-                closest_hit_data = Some(hit_data);
-                current_t_max = t;
-            }
-        }
-
-        closest_hit_data
+        self.bvh.intersect_recursive(ray, &self.triangles, t_min, t_max)
     }
 }
 
