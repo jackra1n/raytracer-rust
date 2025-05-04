@@ -3,7 +3,8 @@ use std::path::Path;
 use rayon::prelude::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::ops::{Add, Sub, Mul};
-
+use image::{ImageBuffer, Rgb};
+use chrono::Local;
 
 const WIDTH: usize = 800;
 const HEIGHT: usize = 600;
@@ -836,6 +837,8 @@ fn main() {
     pb.finish_with_message("Done!");
     let render_time = start_time.elapsed().as_millis();
     println!("Rendered in {}ms", render_time);
+
+    save_image(&buffer);
     
     window
         .update_with_buffer(&buffer, WIDTH, HEIGHT)
@@ -843,5 +846,32 @@ fn main() {
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
         window.update();
+    }
+}
+
+fn save_image(buffer: &[u32]) {
+    println!("Saving image...");
+    let img_start_time = std::time::Instant::now();
+
+    let mut img_buf = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(WIDTH as u32, HEIGHT as u32);
+
+    for (x, y, pixel) in img_buf.enumerate_pixels_mut() {
+        let index = y as usize * WIDTH + x as usize;
+        let color_u32 = buffer[index];
+        let r = ((color_u32 >> 16) & 0xFF) as u8;
+        let g = ((color_u32 >> 8) & 0xFF) as u8;
+        let b = (color_u32 & 0xFF) as u8;
+        *pixel = Rgb([r, g, b]);
+    }
+
+    let date_str = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    let filename = format!("render_{}.png", date_str);
+
+    match img_buf.save(&filename) {
+        Ok(_) => {
+            let img_save_time = img_start_time.elapsed().as_millis();
+            println!("Image saved as '{}' in {}ms", filename, img_save_time);
+        }
+        Err(e) => eprintln!("Error saving image: {}", e),
     }
 }

@@ -7,4 +7,8 @@ A simple raytracer written in Rust. (Work in progress)
 ```bash
 cargo run
 ```
-TBC
+
+
+## Example render 
+
+![Example render](docs/example.png)
