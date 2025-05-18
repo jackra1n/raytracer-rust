@@ -59,11 +59,35 @@ fn load_mesh(
 pub fn init_scene() -> Scene {
     let mut scene = Scene::new();
 
-    let floor_mat = Material::new(Color::new(0.0, 0.3, 0.3), 0.2, 0.3, 20.0);
-    let blue_mirror_mat = Material::new(Color::new(0.0, 0.5, 1.0), 0.8, 0.9, 1000.0);
-    let yellow_diffuse_mat = Material::new(Color::YELLOW, 0.7, 0.8, 50.0);
-    let magenta_mat = Material::new(Color::MAGENTA, 0.5, 0.6, 100.0);
-    let red_plastic_mat = Material::new(Color::RED, 0.0, 0.7, 50.0);
+    let floor_mat = Material::builder()
+        .color(Color::new(0.0, 0.3, 0.3))
+        .reflectivity(0.1)
+        .specular(0.3, 20.0)
+        .build();
+    let blue_mirror_mat = Material::builder()
+        .color(Color::new(0.0, 0.5, 1.0))
+        .reflectivity(0.8)
+        .specular(0.9, 1000.0)
+        .build();
+    let yellow_diffuse_mat = Material::builder()
+        .color(Color::YELLOW)
+        .reflectivity(0.7)
+        .specular(0.8, 50.0)
+        .build();
+    let magenta_mat = Material::builder()
+        .color(Color::MAGENTA)
+        .reflectivity(0.5)
+        .specular(0.6, 100.0)
+        .build();
+    let red_plastic_mat = Material::builder()
+        .color(Color::RED)
+        .specular(0.7, 50.0)
+        .build();
+    let grey_metal_mat = Material::builder()
+        .color(Color::GRAY)
+        .reflectivity(0.9)
+        .specular(0.8, 100.0)
+        .build();
 
     scene.add_light(Light::new(
         Vec3::new(-400.0, 800.0, -800.0),
@@ -88,7 +112,7 @@ pub fn init_scene() -> Scene {
     )));
 
     scene.add_object(Box::new(Sphere {
-        center: Vec3::new(-250.0, 50.0, 150.0),
+        center: Vec3::new(-350.0, 50.0, -150.0),
         radius: 150.0,
         material: blue_mirror_mat,
     }));
