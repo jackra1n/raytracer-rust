@@ -52,14 +52,17 @@ pub fn trace_ray(ray: &Ray, scene: &Scene, depth: usize) -> Color {
 
         let mut rng = rand::rng();
 
+        let view_dir = (ray.start - hd.position).normalized();
+
         for light in &scene.lights {
             let mut shadow_factor = 0.0;
 
             let primary_to_light = light.pos - hd.position;
             let primary_dist_sq = primary_to_light.length_squared();
-            let primary_to_light_dir = primary_to_light / primary_dist_sq.sqrt();
+            let primary_dist = primary_dist_sq.sqrt();
+            let primary_to_light_dir = primary_to_light / primary_dist;
 
-            if primary_dist_sq < EPSILON * EPSILON {
+            if primary_dist < EPSILON {
                 continue;
             }
 
@@ -69,8 +72,8 @@ pub fn trace_ray(ray: &Ray, scene: &Scene, depth: usize) -> Color {
             } else {
                 Vec3::new(1.0, 0.0, 0.0)
             };
-            let u = w.cross(temp_up).normalized();
-            let v = w.cross(u).normalized();
+            let u_light_basis = w.cross(temp_up).normalized();
+            let v_light_basis = w.cross(u_light_basis).normalized();
 
             let shadow_origin = hd.position + hd.normal * SHADOW_EPSILON * 20.0;
 
@@ -78,17 +81,14 @@ pub fn trace_ray(ray: &Ray, scene: &Scene, depth: usize) -> Color {
                 let rand1: f32 = rng.random();
                 let rand2: f32 = rng.random();
 
-                let radius = LIGHT_RADIUS * rand1.sqrt();
-                let angle = 2.0 * std::f32::consts::PI * rand2;
+                let radius_sample = LIGHT_RADIUS * rand1.sqrt();
+                let angle_sample = 2.0 * std::f32::consts::PI * rand2;
 
-                let offset = u * (radius * angle.cos()) + v * (radius * angle.sin());
-
+                let offset = u_light_basis * (radius_sample * angle_sample.cos()) + v_light_basis * (radius_sample * angle_sample.sin());
                 let sample_light_pos = light.pos + offset;
-
                 let sample_to_light_vec = sample_light_pos - hd.position;
                 let sample_dist = sample_to_light_vec.length();
                 let sample_to_light_dir = sample_to_light_vec / sample_dist;
-
                 let shadow_ray = Ray::new(shadow_origin, sample_to_light_dir);
                 let mut is_occluded = false;
 
@@ -111,10 +111,20 @@ pub fn trace_ray(ray: &Ray, scene: &Scene, depth: usize) -> Color {
             shadow_factor /= NUM_SHADOW_SAMPLES as f32;
 
             if shadow_factor > 0.0 {
-                let diff = hd.normal.dot(primary_to_light_dir).max(0.0);
+                let diff_intensity = hd.normal.dot(primary_to_light_dir).max(0.0);
                 let diffuse_contribution =
-                    hd.material.color * light.color * (diff * light.strength * shadow_factor);
+                    hd.material.color * light.color * (diff_intensity * light.strength * shadow_factor);
                 local_color = local_color + diffuse_contribution;
+
+                if hd.material.specular_intensity > EPSILON && hd.material.shininess > EPSILON {
+                    let halfway_dir = (primary_to_light_dir + view_dir).normalized();
+                    let spec_angle = hd.normal.dot(halfway_dir).max(0.0);
+                    let specular_term = spec_angle.powf(hd.material.shininess);
+                    
+                    let specular_highlight_color = light.color;
+                    let specular_contribution = specular_highlight_color * (hd.material.specular_intensity * specular_term * light.strength * shadow_factor);
+                    local_color = local_color + specular_contribution;
+                }
             }
         }
 

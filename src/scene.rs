@@ -59,26 +59,25 @@ fn load_mesh(
 pub fn init_scene() -> Scene {
     let mut scene = Scene::new();
 
-    let floor_mat = Material::new(Color::new(0.0, 0.3, 0.3), 0.2);
-    let blue_mirror_mat = Material::new(Color::new(0.0, 0.5, 1.0), 0.8);
-    let yellow_diffuse_mat = Material::new(Color::new(1.0, 1.0, 0.0), 0.0);
-    let magenta_mat = Material::new(Color::new(1.0, 0.0, 1.0), 0.5);
-    let red_plastic_mat = Material::new(Color::new(1.0, 0.1, 0.1), 0.0);
-    let grey_metal_mat = Material::new(Color::new(0.8, 0.8, 0.8), 0.9);
+    let floor_mat = Material::new(Color::new(0.0, 0.3, 0.3), 0.2, 0.3, 20.0);
+    let blue_mirror_mat = Material::new(Color::new(0.0, 0.5, 1.0), 0.8, 0.9, 1000.0);
+    let yellow_diffuse_mat = Material::new(Color::YELLOW, 0.7, 0.8, 50.0);
+    let magenta_mat = Material::new(Color::MAGENTA, 0.5, 0.6, 100.0);
+    let red_plastic_mat = Material::new(Color::RED, 0.0, 0.7, 50.0);
 
     scene.add_light(Light::new(
-        Vec3::new(-500.0, 800.0, -1000.0),
+        Vec3::new(-400.0, 800.0, -800.0),
         Color::new(1.0, 1.0, 1.0),
+        1.0,
+    ));
+    scene.add_light(Light::new(
+        Vec3::new(400.0, 600.0, -500.0),
+        Color::new(0.8, 0.8, 1.0),
         0.8,
     ));
     scene.add_light(Light::new(
-        Vec3::new(700.0, 600.0, -800.0),
-        Color::new(1.0, 1.0, 0.8),
-        0.6,
-    ));
-    scene.add_light(Light::new(
-        Vec3::new(0.0, 1000.0, 500.0),
-        Color::new(0.8, 0.8, 1.0),
+        Vec3::new(0.0, 400.0, 1000.0),
+        Color::new(1.0, 0.8, 0.8),
         0.5,
     ));
 
@@ -117,16 +116,16 @@ pub fn init_scene() -> Scene {
         180.0,
     );
 
-    let teapot_pos = Vec3::new(300.0, -100.0, 400.0);
-    let teapot_scale = 50.0;
-    load_mesh(
-        &mut scene,
-        "models/teapot/teapot.obj",
-        grey_metal_mat,
-        teapot_scale,
-        teapot_pos,
-        0.0,
-    );
+    // let teapot_pos = Vec3::new(300.0, -100.0, 400.0);
+    // let teapot_scale = 50.0;
+    // load_mesh(
+    //     &mut scene,
+    //     "models/teapot/teapot.obj",
+    //     grey_metal_mat,
+    //     teapot_scale,
+    //     teapot_pos,
+    //     0.0,
+    // );
 
     scene
 }
