@@ -15,11 +15,19 @@ use std::time::Instant;
 
 pub const WIDTH: usize = 800;
 pub const HEIGHT: usize = 600;
-pub const NUM_AA_SAMPLES: usize = 4;
+
+// fast AA
+//pub const NUM_AA_SAMPLES: usize = 4;
+// quality AA
+pub const NUM_AA_SAMPLES: usize = 16;
 pub const INV_AA_SAMPLES: f32 = 1.0 / (NUM_AA_SAMPLES as f32);
+// fast shadow
+//pub const NUM_SHADOW_SAMPLES: usize = 1;
+// quality shadow
+pub const NUM_SHADOW_SAMPLES: usize = 4;
 
 pub const MAX_RECURSION_DEPTH: usize = 5;
-pub const NUM_SHADOW_SAMPLES: usize = 1;
+
 pub const EPSILON: f32 = 1e-5;
 const LIGHT_RADIUS: f32 = 50.0;
 const SHADOW_EPSILON: f32 = 1e-4;
