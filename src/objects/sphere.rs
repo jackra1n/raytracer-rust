@@ -1,20 +1,20 @@
-use crate::hittable::HitData;
-use crate::hittable::Object;
+use crate::hittable::HitRecord;
+use crate::hittable::Hittable;
 use crate::material::Material;
 use crate::ray::Ray;
 use crate::vec3::Vec3;
-
+use std::sync::Arc;
 pub struct Sphere {
     pub center: Vec3,
     pub radius: f32,
-    pub material: Material,
+    pub material: Arc<dyn Material>,
 }
 
-impl Object for Sphere {
-    fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
-        let oc = ray.start - self.center;
-        let a = ray.dir.dot(ray.dir);
-        let half_b = oc.dot(ray.dir);
+impl Hittable for Sphere {
+    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
+        let oc = ray.origin - self.center;
+        let a = ray.direction.dot(ray.direction);
+        let half_b = oc.dot(ray.direction);
         let c = oc.dot(oc) - self.radius * self.radius;
         let discriminant = half_b * half_b - a * c;
 
@@ -36,11 +36,12 @@ impl Object for Sphere {
         let position = ray.at(t);
         let normal = (position - self.center) / self.radius;
 
-        Some(HitData {
+        Some(HitRecord {
             t,
             position,
             normal,
-            material: self.material,
+            material: self.material.clone(),
+            front_face: ray.direction.dot(normal) < 0.0,
         })
     }
 }

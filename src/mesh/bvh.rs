@@ -1,4 +1,4 @@
-use crate::hittable::HitData;
+use crate::hittable::HitRecord;
 use crate::mesh::aabb::Aabb;
 use crate::mesh::triangle::Triangle;
 use crate::ray::Ray;
@@ -81,19 +81,19 @@ impl BVHNode {
         triangles: &'a [Triangle],
         t_min: f32,
         mut t_max: f32,
-    ) -> Option<HitData> {
+    ) -> Option<HitRecord> {
         if !self.bounds.intersect(ray, t_min, t_max) {
             return None;
         }
 
         if self.left.is_none() {
-            let mut closest_hit: Option<HitData> = None;
+            let mut closest_hit: Option<HitRecord> = None;
             for &idx in &self.triangle_indices {
                 let triangle = &triangles[idx];
 
                 let edge1 = triangle.v1 - triangle.v0;
                 let edge2 = triangle.v2 - triangle.v0;
-                let h = ray.dir.cross(edge2);
+                let h = ray.direction.cross(edge2);
                 let a = edge1.dot(h);
 
                 if a.abs() < EPSILON {
@@ -101,14 +101,14 @@ impl BVHNode {
                 }
 
                 let f = 1.0 / a;
-                let s = ray.start - triangle.v0;
+                let s = ray.origin - triangle.v0;
                 let u = f * s.dot(h);
                 if !(0.0..=1.0).contains(&u) {
                     continue;
                 }
 
                 let q = s.cross(edge1);
-                let v = f * ray.dir.dot(q);
+                let v = f * ray.direction.dot(q);
                 if v < 0.0 || u + v > 1.0 {
                     continue;
                 }
@@ -116,11 +116,12 @@ impl BVHNode {
                 let t = f * edge2.dot(q);
 
                 if t > t_min && t < t_max {
-                    let hit_data = HitData {
+                    let hit_data = HitRecord {
                         t,
                         position: ray.at(t),
                         normal: triangle.normal,
-                        material: triangle.material,
+                        material: triangle.material.clone(),
+                        front_face: true,
                     };
                     t_max = t;
                     closest_hit = Some(hit_data);

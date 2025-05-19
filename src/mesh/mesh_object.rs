@@ -1,10 +1,11 @@
-use crate::hittable::{HitData, Object};
+use crate::hittable::{HitRecord, Hittable};
 use crate::material::Material;
 use crate::mesh::bvh::BVHNode;
 use crate::mesh::triangle::Triangle;
 use crate::ray::Ray;
 use crate::renderer::EPSILON;
 use crate::vec3::Vec3;
+use std::sync::Arc;
 
 use std::path::Path;
 
@@ -16,7 +17,7 @@ pub struct Mesh {
 impl Mesh {
     pub fn from_obj(
         path: &str,
-        material: Material,
+        material: Arc<dyn Material>,
         scale: f32,
         offset: Vec3,
         rotation_y: f32,
@@ -91,7 +92,7 @@ impl Mesh {
                     vertices[v0_idx],
                     vertices[v1_idx],
                     vertices[v2_idx],
-                    material,
+                    material.clone(),
                 );
 
                 if (triangle.v1 - triangle.v0)
@@ -129,8 +130,8 @@ impl Mesh {
     }
 }
 
-impl Object for Mesh {
-    fn intersect(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitData> {
+impl Hittable for Mesh {
+    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         self.bvh
             .intersect_recursive(ray, &self.triangles, t_min, t_max)
     }

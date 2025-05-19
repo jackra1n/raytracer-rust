@@ -1,28 +1,30 @@
 use crate::color::Color;
-use crate::hittable::Object;
+use crate::hittable::{Hittable, HittableList};
 use crate::light::Light;
-use crate::material::Material;
+use crate::material::{Lambertian, Metal, Dielectric, EmissiveLight, Material};
 use crate::mesh::mesh_object::Mesh;
-use crate::objects::cube::Cube;
 use crate::objects::plane::Plane;
 use crate::objects::sphere::Sphere;
 use crate::vec3::Vec3;
+use std::sync::Arc;
+
+
 
 pub struct Scene {
-    pub objects: Vec<Box<dyn Object + Sync>>,
+    pub object_list: HittableList,
     pub lights: Vec<Light>,
 }
 
 impl Scene {
     pub fn new() -> Self {
         Scene {
-            objects: Vec::new(),
+            object_list: HittableList::new(),
             lights: Vec::new(),
         }
     }
 
-    pub fn add_object(&mut self, obj: Box<dyn Object + Sync>) {
-        self.objects.push(obj);
+    pub fn add_object(&mut self, obj: Box<dyn Hittable + Sync>) {
+        self.object_list.add(obj);
     }
 
     pub fn add_light(&mut self, l: Light) {
@@ -33,7 +35,7 @@ impl Scene {
 fn load_mesh(
     scene: &mut Scene,
     path: &str,
-    material: Material,
+    material: Arc<dyn Material>,
     scale: f32,
     offset: Vec3,
     rotation_y: f32,
@@ -59,33 +61,14 @@ fn load_mesh(
 pub fn init_scene() -> Scene {
     let mut scene = Scene::new();
 
-    let floor_mat = Material::builder()
-        .color(Color::new(0.0, 0.3, 0.3))
-        .reflectivity(0.1)
-        .specular(0.3, 20.0)
-        .build();
-    let blue_mirror_mat = Material::builder()
-        .color(Color::new(0.0, 0.5, 1.0))
-        .specular(0.9, 1000.0)
-        .build();
-    let yellow_diffuse_mat = Material::builder()
-        .color(Color::YELLOW)
-        .reflectivity(0.7)
-        .specular(0.8, 50.0)
-        .build();
-    let magenta_mat = Material::builder()
-        .color(Color::MAGENTA)
-        .reflectivity(0.5)
-        .specular(0.6, 100.0)
-        .build();
-    let red_plastic_mat = Material::builder()
-        .color(Color::RED)
-        .specular(0.7, 50.0)
-        .build();
-    let grey_metal_mat = Material::builder()
-        .color(Color::GRAY)
-        .reflectivity(1.0)
-        .build();
+    let floor_mat = Arc::new(Lambertian::new(Color::new(0.0, 0.3, 0.3)));
+    let blue_mirror_mat = Arc::new(Metal::new(Color::new(0.0, 0.5, 1.0), 0.02)); // Reduced fuzz from 0.9, 0.9 is very blurry
+    let yellow_diffuse_mat = Arc::new(Lambertian::new(Color::YELLOW));
+    let magenta_mat = Arc::new(Lambertian::new(Color::MAGENTA));
+    let red_plastic_mat = Arc::new(Lambertian::new(Color::RED));
+    let grey_metal_mat = Arc::new(Metal::new(Color::GRAY, 0.0)); // Fuzz 1.0 is max blur, 0.0 for perfect mirror
+    let glass_mat = Arc::new(Dielectric::new(1.5));
+
 
     scene.add_light(Light::new(
         Vec3::new(-400.0, 800.0, -800.0),
@@ -109,52 +92,75 @@ pub fn init_scene() -> Scene {
         floor_mat,
     )));
 
-    scene.add_object(Box::new(Sphere {
-        center: Vec3::new(-350.0, 50.0, -150.0),
-        radius: 150.0,
-        material: blue_mirror_mat,
-    }));
+    // scene.add_object(Box::new(Sphere {
+    //     center: Vec3::new(-350.0, 50.0, -150.0),
+    //     radius: 150.0,
+    //     material: blue_mirror_mat,
+    // }));
 
     scene.add_object(Box::new(Sphere {
-        center: Vec3::new(-150.0, 50.0, -450.0),
+        center: Vec3::new(350.0, 50.0, -450.0),
         radius: 100.0,
-        material: Material::glass(),
+        material: glass_mat.clone(),
     }));
 
-    scene.add_object(Box::new(Cube::new_pos_size(
-        Vec3::new(150.0, 50.0, -450.0),
-        Vec3::new(100.0, 100.0, 100.0),
-        Material::glass(),
-    )));
+    // scene.add_object(Box::new(Cube::new_pos_size(
+    //     Vec3::new(150.0, 50.0, -450.0),
+    //     Vec3::new(100.0, 100.0, 100.0),
+    //     Material::glass(),
+    // )));
 
-    scene.add_object(Box::new(Sphere {
-        center: Vec3::new(250.0, 50.0, -250.0),
-        radius: 150.0,
-        material: grey_metal_mat,
-    }));
+    // scene.add_object(Box::new(Sphere {
+    //     center: Vec3::new(250.0, 50.0, -250.0),
+    //     radius: 150.0,
+    //     material: grey_metal_mat,
+    // }));
 
-    scene.add_object(Box::new(Cube::new_pos_size(
-        Vec3::new(300.0, -100.0, 0.0),
-        Vec3::new(100.0, 400.0, 100.0),
-        yellow_diffuse_mat,
-    )));
+    // scene.add_object(Box::new(Cube::new_pos_size(
+    //     Vec3::new(300.0, -100.0, 0.0),
+    //     Vec3::new(100.0, 400.0, 100.0),
+    //     yellow_diffuse_mat,
+    // )));
 
-    scene.add_object(Box::new(Cube::new_pos_size(
-        Vec3::new(50.0, -50.0, -150.0),
-        Vec3::new(100.0, 100.0, 100.0),
-        magenta_mat,
-    )));
+    // scene.add_object(Box::new(Cube::new_pos_size(
+    //     Vec3::new(50.0, -50.0, -150.0),
+    //     Vec3::new(100.0, 100.0, 100.0),
+    //     magenta_mat,
+    // )));
 
     let amogus_pos = Vec3::new(0.0, -100.0, 200.0);
     let amogus_scale = 3.0;
     load_mesh(
         &mut scene,
         "models/amogus/obj/sus.obj",
-        Material::mirror(),
+        red_plastic_mat,
         amogus_scale,
         amogus_pos,
         180.0,
     );
+
+    let amogus_pos = Vec3::new(-150.0, -100.0, -200.0);
+    let amogus_scale = 3.0;
+    load_mesh(
+        &mut scene,
+        "models/amogus/obj/sus.obj",
+        glass_mat.clone(),
+        amogus_scale,
+        amogus_pos,
+        180.0,
+    );
+
+
+    // let amogus_pos = Vec3::new(350.0, -100.0, 200.0);
+    // let amogus_scale = 3.0;
+    // load_mesh(
+    //     &mut scene,
+    //     "models/amogus/obj/sus.obj",
+    //     Material::mirror(),
+    //     amogus_scale,
+    //     amogus_pos,
+    //     180.0,
+    // );
 
     // let amogus_pos = Vec3::new(200.0, -100.0, 200.0);
     // let amogus_scale = 3.0;

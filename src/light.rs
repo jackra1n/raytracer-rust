@@ -3,7 +3,7 @@ use crate::vec3::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Light {
-    pub pos: Vec3,
+    pub position: Vec3,
     pub color: Color,
     pub strength: f32,
 }
@@ -11,7 +11,7 @@ pub struct Light {
 impl Light {
     pub fn new(pos: Vec3, color: Color, strength: f32) -> Self {
         Self {
-            pos,
+            position: pos,
             color,
             strength,
         }

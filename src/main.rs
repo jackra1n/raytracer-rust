@@ -31,7 +31,7 @@ fn main() {
     let scene = init_scene();
     println!(
         "Scene initialized with {} objects and {} lights.",
-        scene.objects.len(),
+        scene.object_list.objects.len(),
         scene.lights.len()
     );
 

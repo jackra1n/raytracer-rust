@@ -26,9 +26,9 @@ impl Aabb {
 
     pub fn intersect(&self, ray: &Ray, mut t_min: f32, mut t_max: f32) -> bool {
         for axis in 0..3 {
-            let inv_d = 1.0 / ray.dir[axis];
-            let mut t0 = (self.min[axis] - ray.start[axis]) * inv_d;
-            let mut t1 = (self.max[axis] - ray.start[axis]) * inv_d;
+            let inv_d = 1.0 / ray.direction[axis];
+            let mut t0 = (self.min[axis] - ray.origin[axis]) * inv_d;
+            let mut t1 = (self.max[axis] - ray.origin[axis]) * inv_d;
 
             if inv_d < 0.0 {
                 std::mem::swap(&mut t0, &mut t1);
