@@ -66,7 +66,6 @@ pub fn init_scene() -> Scene {
         .build();
     let blue_mirror_mat = Material::builder()
         .color(Color::new(0.0, 0.5, 1.0))
-        .reflectivity(0.8)
         .specular(0.9, 1000.0)
         .build();
     let yellow_diffuse_mat = Material::builder()
@@ -85,8 +84,7 @@ pub fn init_scene() -> Scene {
         .build();
     let grey_metal_mat = Material::builder()
         .color(Color::GRAY)
-        .reflectivity(0.9)
-        .specular(0.8, 100.0)
+        .reflectivity(1.0)
         .build();
 
     scene.add_light(Light::new(
@@ -117,6 +115,24 @@ pub fn init_scene() -> Scene {
         material: blue_mirror_mat,
     }));
 
+    scene.add_object(Box::new(Sphere {
+        center: Vec3::new(-150.0, 50.0, -450.0),
+        radius: 100.0,
+        material: Material::glass(),
+    }));
+
+    scene.add_object(Box::new(Cube::new_pos_size(
+        Vec3::new(150.0, 50.0, -450.0),
+        Vec3::new(100.0, 100.0, 100.0),
+        Material::glass(),
+    )));
+
+    scene.add_object(Box::new(Sphere {
+        center: Vec3::new(250.0, 50.0, -250.0),
+        radius: 150.0,
+        material: grey_metal_mat,
+    }));
+
     scene.add_object(Box::new(Cube::new_pos_size(
         Vec3::new(300.0, -100.0, 0.0),
         Vec3::new(100.0, 400.0, 100.0),
@@ -134,11 +150,22 @@ pub fn init_scene() -> Scene {
     load_mesh(
         &mut scene,
         "models/amogus/obj/sus.obj",
-        red_plastic_mat,
+        Material::mirror(),
         amogus_scale,
         amogus_pos,
         180.0,
     );
+
+    // let amogus_pos = Vec3::new(200.0, -100.0, 200.0);
+    // let amogus_scale = 3.0;
+    // load_mesh(
+    //     &mut scene,
+    //     "models/amogus/obj/sus.obj",
+    //     Material::mirror(),
+    //     amogus_scale,
+    //     amogus_pos,
+    //     180.0,
+    // );
 
     // let teapot_pos = Vec3::new(300.0, -100.0, 400.0);
     // let teapot_scale = 50.0;

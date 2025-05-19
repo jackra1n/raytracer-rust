@@ -137,14 +137,66 @@ pub fn trace_ray(ray: &Ray, scene: &Scene, depth: usize) -> Color {
             let reflection_dir =
                 (incoming_dir - normal * 2.0 * incoming_dir.dot(normal)).normalized();
 
-            let reflection_origin = hd.position + normal * EPSILON * 10.0;
-
+            let reflection_origin = hd.position + normal * EPSILON * 10.0; 
             let reflection_ray = Ray::new(reflection_origin, reflection_dir);
-
             reflected_color = trace_ray(&reflection_ray, scene, depth + 1);
         }
 
-        local_color * (1.0 - reflectivity) + reflected_color * reflectivity
+        let transparency = hd.material.transparency;
+        let mut refracted_color = Color::new(0.0, 0.0, 0.0);
+
+        if transparency > EPSILON {
+            let incident_dir = ray.dir;
+            let hit_normal = hd.normal;
+            let material_ior = hd.material.refractive_index;
+
+            let n1: f32;
+            let n2: f32;
+            let snell_normal: Vec3;
+            let refraction_origin_offset_normal: Vec3;
+
+            if incident_dir.dot(hit_normal) < 0.0 {
+                n1 = 1.0;
+                n2 = material_ior;
+                snell_normal = hit_normal;
+                refraction_origin_offset_normal = hit_normal * -1.0;
+            } else {
+                n1 = material_ior;
+                n2 = 1.0;
+                snell_normal = hit_normal * -1.0;
+                refraction_origin_offset_normal = hit_normal;
+            }
+
+            let eta = n1 / n2;
+            let cos_i = -incident_dir.dot(snell_normal);
+
+            let k = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
+
+            if k >= 0.0 {
+                let cos_t = k.sqrt();
+                let refraction_dir = (incident_dir * eta + snell_normal * (eta * cos_i - cos_t)).normalized();
+                
+                let refraction_origin = hd.position + refraction_origin_offset_normal * EPSILON * 10.0;
+                let refraction_ray = Ray::new(refraction_origin, refraction_dir);
+                refracted_color = trace_ray(&refraction_ray, scene, depth + 1);
+            }
+        }
+
+        let surface_color_contribution = local_color * (1.0 - reflectivity - transparency).max(0.0);
+        let reflection_contribution = reflected_color * reflectivity;
+        let refraction_contribution = refracted_color * transparency;
+
+        let total_transmitted_reflected = reflectivity + transparency;
+        if total_transmitted_reflected > 1.0 {
+            let norm_reflectivity = reflectivity / total_transmitted_reflected;
+            let norm_transparency = transparency / total_transmitted_reflected;
+            return local_color * (1.0 - norm_reflectivity - norm_transparency).max(0.0) + 
+                   reflected_color * norm_reflectivity + 
+                   refracted_color * norm_transparency;
+        }
+
+        surface_color_contribution + reflection_contribution + refraction_contribution
+
     } else {
         Color::new(0.1, 0.1, 0.15)
     }
