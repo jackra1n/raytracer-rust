@@ -34,14 +34,16 @@ impl Hittable for Sphere {
 
         let t = root;
         let position = ray.at(t);
-        let normal = (position - self.center) / self.radius;
+        let outward_normal = (position - self.center) / self.radius;
+        let front_face = ray.direction.dot(outward_normal) < 0.0;
+        let normal = if front_face { outward_normal } else { -outward_normal };
 
         Some(HitRecord {
             t,
             position,
             normal,
             material: self.material.clone(),
-            front_face: ray.direction.dot(normal) < 0.0,
+            front_face,
         })
     }
 }

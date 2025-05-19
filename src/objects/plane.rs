@@ -37,16 +37,17 @@ impl Hittable for Plane {
         }
 
         let position = ray.at(t);
+
+        let outward_normal = self.normal;
+        let front_face = ray.direction.dot(outward_normal) < 0.0;
+        let hit_record_normal = if front_face { outward_normal } else { -outward_normal };
+
         Some(HitRecord {
             t,
             position,
-            normal: if denom < 0.0 {
-                self.normal
-            } else {
-                self.normal * -1.0
-            },
+            normal: hit_record_normal,
             material: self.material.clone(),
-            front_face: true,
+            front_face,
         })
     }
 }

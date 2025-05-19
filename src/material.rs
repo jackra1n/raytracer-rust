@@ -75,7 +75,7 @@ impl Dielectric {
 
 impl Material for Dielectric {
     fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
-        let attenuation = Color::new(1.0, 1.0, 1.0);
+        let attenuation = Color::WHITE;
 
         let refraction_ratio = if hit_record.front_face {
             1.0 / self.refractive_index
@@ -91,10 +91,7 @@ impl Material for Dielectric {
         let cannot_refract = refraction_ratio * refraction_ratio * sin_theta_squared > 1.0;
         let scatter_direction: Vec3;
 
-        let r0_intermediate = (1.0 - self.refractive_index) / (1.0 + self.refractive_index);
-        let r0 = r0_intermediate * r0_intermediate;
-        let reflectance = r0 + (1.0 - r0) * (1.0 - cos_theta).powi(5);
-
+        let reflectance = schlick_reflectance(cos_theta, 1.0 / refraction_ratio);
 
         if cannot_refract || reflectance > rng.random::<f32>() {
             scatter_direction = reflect(unit_direction, hit_record.normal);

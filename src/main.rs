@@ -1,7 +1,6 @@
 mod camera;
 mod color;
 mod hittable;
-mod light;
 mod material;
 mod mesh;
 mod objects;
@@ -30,16 +29,15 @@ fn main() {
     println!("Initializing scene...");
     let scene = init_scene();
     println!(
-        "Scene initialized with {} objects and {} lights.",
-        scene.object_list.objects.len(),
-        scene.lights.len()
+        "Scene initialized with {} objects.",
+        scene.object_list.objects.len()
     );
 
     let camera = Camera::new(
         Vec3::new(0.0, 250.0, -1200.0),
         Vec3::new(0.0, 50.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0),
-        50.0,
+        60.0,
         WIDTH as f32 / HEIGHT as f32,
     );
 

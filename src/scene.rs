@@ -1,6 +1,5 @@
 use crate::color::Color;
 use crate::hittable::{Hittable, HittableList};
-use crate::light::Light;
 use crate::material::{Lambertian, Metal, Dielectric, EmissiveLight, Material};
 use crate::mesh::mesh_object::Mesh;
 use crate::objects::plane::Plane;
@@ -12,23 +11,17 @@ use std::sync::Arc;
 
 pub struct Scene {
     pub object_list: HittableList,
-    pub lights: Vec<Light>,
 }
 
 impl Scene {
     pub fn new() -> Self {
         Scene {
             object_list: HittableList::new(),
-            lights: Vec::new(),
         }
     }
 
     pub fn add_object(&mut self, obj: Box<dyn Hittable + Sync>) {
         self.object_list.add(obj);
-    }
-
-    pub fn add_light(&mut self, l: Light) {
-        self.lights.push(l);
     }
 }
 
@@ -62,7 +55,8 @@ pub fn init_scene() -> Scene {
     let mut scene = Scene::new();
 
     let floor_mat = Arc::new(Lambertian::new(Color::new(0.0, 0.3, 0.3)));
-    let blue_mirror_mat = Arc::new(Metal::new(Color::new(0.0, 0.5, 1.0), 0.02)); // Reduced fuzz from 0.9, 0.9 is very blurry
+    let default_mirror_mat = Arc::new(Metal::new(Color::new(0.9, 0.9, 1.0), 0.02)); // Reduced fuzz from 0.9, 0.9 is very blurry
+    let fuzzy_mirror_mat = Arc::new(Metal::new(Color::new(0.0, 0.9, 1.0), 0.9)); // Reduced fuzz from 0.9, 0.9 is very blurry
     let yellow_diffuse_mat = Arc::new(Lambertian::new(Color::YELLOW));
     let magenta_mat = Arc::new(Lambertian::new(Color::MAGENTA));
     let red_plastic_mat = Arc::new(Lambertian::new(Color::RED));
@@ -70,21 +64,41 @@ pub fn init_scene() -> Scene {
     let glass_mat = Arc::new(Dielectric::new(1.5));
 
 
-    scene.add_light(Light::new(
-        Vec3::new(-400.0, 800.0, -800.0),
-        Color::new(1.0, 1.0, 1.0),
-        1.0,
-    ));
-    scene.add_light(Light::new(
-        Vec3::new(400.0, 600.0, -500.0),
-        Color::new(0.8, 0.8, 1.0),
-        0.8,
-    ));
-    scene.add_light(Light::new(
-        Vec3::new(0.0, 400.0, 1000.0),
-        Color::new(1.0, 0.8, 0.8),
-        0.5,
-    ));
+    let bright_light_color = Color::new(10.0, 10.0, 10.0); // Values > 1.0 make it emissive
+    let sphere_light_mat = Arc::new(EmissiveLight::new(bright_light_color));
+    // scene.add_light(Light::new(
+    //     Vec3::new(-400.0, 800.0, -800.0),
+    //     Color::new(1.0, 1.0, 1.0),
+    //     1.0,
+    // ));
+    // scene.add_light(Light::new(
+    //     Vec3::new(400.0, 600.0, -500.0),
+    //     Color::new(0.8, 0.8, 1.0),
+    //     0.8,
+    // ));
+    // scene.add_light(Light::new(
+    //     Vec3::new(0.0, 400.0, 1000.0),
+    //     Color::new(1.0, 0.8, 0.8),
+    //     0.5,
+    // ));
+
+    scene.add_object(Box::new(Sphere {
+        center: Vec3::new(-400.0, 800.0, -800.0), // Position it above or to the side
+        radius: 50.0,                          // Radius of the light
+        material: sphere_light_mat.clone(),
+    }));
+
+    scene.add_object(Box::new(Sphere {
+        center: Vec3::new(400.0, 600.0, -500.0), // Position it above or to the side
+        radius: 50.0,                          // Radius of the light
+        material: sphere_light_mat.clone(),
+    }));
+
+    scene.add_object(Box::new(Sphere {
+        center: Vec3::new(0.0, 400.0, 1000.0), // Position it above or to the side
+        radius: 50.0,                          // Radius of the light
+        material: sphere_light_mat.clone(),
+    }));
 
     scene.add_object(Box::new(Plane::new(
         Vec3::new(0.0, -100.0, 0.0),
@@ -139,7 +153,7 @@ pub fn init_scene() -> Scene {
         180.0,
     );
 
-    let amogus_pos = Vec3::new(-150.0, -100.0, -200.0);
+    let amogus_pos = Vec3::new(-350.0, -100.0, 200.0);
     let amogus_scale = 3.0;
     load_mesh(
         &mut scene,
@@ -151,16 +165,16 @@ pub fn init_scene() -> Scene {
     );
 
 
-    // let amogus_pos = Vec3::new(350.0, -100.0, 200.0);
-    // let amogus_scale = 3.0;
-    // load_mesh(
-    //     &mut scene,
-    //     "models/amogus/obj/sus.obj",
-    //     Material::mirror(),
-    //     amogus_scale,
-    //     amogus_pos,
-    //     180.0,
-    // );
+    let amogus_pos = Vec3::new(350.0, -100.0, 200.0);
+    let amogus_scale = 3.0;
+    load_mesh(
+        &mut scene,
+        "models/amogus/obj/sus.obj",
+        default_mirror_mat.clone(),
+        amogus_scale,
+        amogus_pos,
+        180.0,
+    );
 
     // let amogus_pos = Vec3::new(200.0, -100.0, 200.0);
     // let amogus_scale = 3.0;

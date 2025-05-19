@@ -116,12 +116,17 @@ impl BVHNode {
                 let t = f * edge2.dot(q);
 
                 if t > t_min && t < t_max {
+                    let position = ray.at(t);
+                    let outward_normal = triangle.normal;
+                    let front_face = ray.direction.dot(outward_normal) < 0.0;
+                    let hit_record_normal = if front_face { outward_normal } else { -outward_normal };
+
                     let hit_data = HitRecord {
                         t,
-                        position: ray.at(t),
-                        normal: triangle.normal,
+                        position,
+                        normal: hit_record_normal,
                         material: triangle.material.clone(),
-                        front_face: true,
+                        front_face,
                     };
                     t_max = t;
                     closest_hit = Some(hit_data);
