@@ -32,12 +32,12 @@ impl Material {
     pub fn mirror() -> Self {
         Self {
             color: Color::new(0.9, 0.9, 0.9),
-            reflectivity: 1.0,
+            reflectivity: 0.97,
             specular_intensity: 0.0,
             shininess: 0.0,
             emissive_color: None,
             transparency: 0.0,
-            refractive_index: 1.0,
+            refractive_index: 0.0,
         }
     }
 
