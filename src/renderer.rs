@@ -3,10 +3,10 @@ use crate::color::{color_to_u32, Color};
 use crate::hittable::{Hittable};
 use crate::ray::Ray;
 use crate::scene::Scene;
-
+use crate::tungsten_parser::RenderSettings;
 
 use chrono::Local;
-use image::{ImageBuffer, Rgb};
+use image::{DynamicImage, GenericImageView, ImageBuffer, Rgb};
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
@@ -14,13 +14,20 @@ use std::time::Instant;
 use std::fs;
 use std::path::Path;
 
-pub const WIDTH: usize = 800;
-pub const HEIGHT: usize = 600;
+// Removed global WIDTH and HEIGHT constants, will use render_settings
+// pub const WIDTH: usize = 800;
+// pub const HEIGHT: usize = 600;
 
-pub const NUM_AA_SAMPLES: usize = 16; // 16 for fast, 64/100+ for quality
-pub const INV_AA_SAMPLES: f32 = 1.0 / (NUM_AA_SAMPLES as f32);
+// NUM_AA_SAMPLES and MAX_RECURSION_DEPTH are effectively superseded by render_settings
+// but trace_ray directly uses MAX_RECURSION_DEPTH. For now, keep it and INV_AA_SAMPLES.
+// If render_settings provides these, trace_ray should take them as args or render_scene pass them.
+// For now, render_scene uses render_settings.samples_per_pixel, but trace_ray uses global MAX_RECURSION_DEPTH.
+// Let's leave these for a moment and focus on width/height.
 
-pub const MAX_RECURSION_DEPTH: usize = 10; // 50 common for path tracing
+pub const NUM_AA_SAMPLES: usize = 16; // This should eventually come from render_settings.samples_per_pixel
+pub const INV_AA_SAMPLES: f32 = 1.0 / (NUM_AA_SAMPLES as f32); // Needs to be dynamic if NUM_AA_SAMPLES is
+
+pub const MAX_RECURSION_DEPTH: usize = 10; // This should come from render_settings.max_depth
 
 pub const EPSILON: f32 = 1e-4;
 
@@ -28,7 +35,7 @@ pub const EPSILON: f32 = 1e-4;
 pub fn trace_ray(
     ray_in: &Ray,
     scene: &Scene,
-    depth: usize,
+    depth: usize, // This is correctly passed down, originating from render_settings.max_depth
     rng: &mut dyn RngCore,
 ) -> Color {
     if depth == 0 {
@@ -55,18 +62,30 @@ pub fn trace_ray(
             // ray missed all objects, return background/sky color
             let unit_direction = ray_in.direction.normalized();
             let t = 0.5 * (unit_direction.y + 1.0); // y is up
-            Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.5, 0.7, 1.0) * t
+            // Check if skybox_image exists and use it
+            if let Some(skybox_dynamic) = &scene.skybox_image {
+                // Convert DynamicImage to a specific image type (e.g., Rgba8Image) to use get_pixel
+                let skybox = skybox_dynamic.to_rgba8(); // Convert to Rgba8Image
+                let u = 0.5 + unit_direction.x.atan2(unit_direction.z) / (2.0 * std::f32::consts::PI);
+                let v = 0.5 - unit_direction.y.asin() / std::f32::consts::PI;
+                let x = (u * (skybox.width() - 1) as f32).max(0.0) as u32;
+                let y = (v * (skybox.height() - 1) as f32).max(0.0) as u32;
+                let pixel = skybox.get_pixel(x.min(skybox.width()-1), y.min(skybox.height()-1));
+                Color::new(pixel[0] as f32 / 255.0, pixel[1] as f32 / 255.0, pixel[2] as f32 / 255.0)
+            } else {
+                 Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.5, 0.7, 1.0) * t
+            }
         }
     }
 }
 
 
-pub fn render_scene(scene: &Scene, camera: &Camera) -> Vec<u32> {
+pub fn render_scene(scene: &Scene, camera: &Camera, render_settings: &RenderSettings) -> Vec<u32> {
     println!(
         "Rendering frame ({}x{}) with {} AA samples...",
-        WIDTH, HEIGHT, NUM_AA_SAMPLES
+        render_settings.width, render_settings.height, render_settings.samples_per_pixel
     );
-    let pb = ProgressBar::new(HEIGHT as u64);
+    let pb = ProgressBar::new(render_settings.height as u64); // Use render_settings.height
     pb.set_style(
         ProgressStyle::default_bar()
             .template(
@@ -77,24 +96,29 @@ pub fn render_scene(scene: &Scene, camera: &Camera) -> Vec<u32> {
     );
 
     let start_time = Instant::now();
-    let mut image_data = vec![Color::BLACK; WIDTH * HEIGHT];
+    // Use render_settings for image_data dimensions
+    let mut image_data = vec![Color::BLACK; render_settings.width * render_settings.height];
+
+    let inv_aa_samples_dynamic = 1.0 / (render_settings.samples_per_pixel as f32);
 
     image_data
-        .par_chunks_mut(WIDTH)
+        .par_chunks_mut(render_settings.width) // Use render_settings.width
         .enumerate()
         .for_each(|(y_idx, row_slice)| {
-            let mut rng = rand::rng();
+            // Use StdRng seeded per row for consistent noise patterns if rerendering same row
+            let mut rng = rand::rngs::StdRng::seed_from_u64(y_idx as u64);
 
-            for x_idx in 0..WIDTH {
+            for x_idx in 0..render_settings.width { // Use render_settings.width
                 let mut accumulated_color = Color::BLACK;
-                for _s in 0..NUM_AA_SAMPLES {
-                    let u = (x_idx as f32 + rng.random::<f32>()) / (WIDTH as f32);
-                    let v = (y_idx as f32 + rng.random::<f32>()) / (HEIGHT as f32);
+                for _s in 0..render_settings.samples_per_pixel { // Use render_settings.samples_per_pixel
+                    let u = (x_idx as f32 + rng.gen::<f32>()) / (render_settings.width as f32);
+                    let v = (y_idx as f32 + rng.gen::<f32>()) / (render_settings.height as f32);
 
                     let ray = camera.get_ray(u, v);
-                    accumulated_color = accumulated_color + trace_ray(&ray, scene, MAX_RECURSION_DEPTH, &mut rng);
+                    // Pass render_settings.max_depth to trace_ray
+                    accumulated_color = accumulated_color + trace_ray(&ray, scene, render_settings.max_depth, &mut rng);
                 }
-                row_slice[x_idx] = accumulated_color * INV_AA_SAMPLES;
+                row_slice[x_idx] = accumulated_color * inv_aa_samples_dynamic;
             }
             pb.inc(1);
         });
@@ -117,14 +141,15 @@ pub fn render_scene(scene: &Scene, camera: &Camera) -> Vec<u32> {
 }
 
 
-pub fn save_image(buffer: &[u32]) {
+pub fn save_image(buffer: &[u32], width: usize, height: usize) { // Pass width and height
     println!("Saving image...");
     let img_start_time = std::time::Instant::now();
 
-    let mut img_buf = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(WIDTH as u32, HEIGHT as u32);
+    // Use passed width and height for ImageBuffer dimensions
+    let mut img_buf = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(width as u32, height as u32);
 
     for (x, y, pixel) in img_buf.enumerate_pixels_mut() {
-        let index = y as usize * WIDTH + x as usize;
+        let index = y as usize * width + x as usize; // Use passed width
         if index < buffer.len() {
             let color_u32 = buffer[index];
             let r = ((color_u32 >> 16) & 0xFF) as u8;
@@ -133,7 +158,7 @@ pub fn save_image(buffer: &[u32]) {
             *pixel = Rgb([r, g, b]);
         } else {
             eprintln!("Warning: Buffer access out of bounds at ({}, {})", x, y);
-            *pixel = Rgb([255, 0, 255]);
+            *pixel = Rgb([255, 0, 255]); // Magenta for out of bounds
         }
     }
 
@@ -144,7 +169,13 @@ pub fn save_image(buffer: &[u32]) {
         match fs::create_dir_all(output_dir) {
             Ok(_) => println!("Created directory: {}", output_dir),
             Err(e) => {
-                eprintln!("Error creating directory '{}': {}.", output_dir, e);
+                eprintln!("Error creating directory '{}': {}. Image will be saved in current directory.", output_dir, e);
+                // Fallback: Try to save in the current directory if dir creation fails
+                let filename = format!("render_pt_{}.png", date_str);
+                match img_buf.save(&filename) {
+                    Ok(_) => println!("Image saved as '{}' in current directory.", filename),
+                    Err(e_fb) => eprintln!("Error saving image in current directory: {}", e_fb),
+                }
                 return;
             }
         }
