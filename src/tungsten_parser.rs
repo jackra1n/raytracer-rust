@@ -14,6 +14,7 @@ use crate::objects::sphere::Sphere;
 use crate::objects::plane::Plane;
 use crate::mesh::mesh_object::Mesh;
 use std::collections::HashMap;
+use glam::{Mat4, Vec3 as GlamVec3, Quat};
 
 #[derive(Deserialize, Debug, Copy, Clone)]
 pub struct Vec3Config {
@@ -424,15 +425,24 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                         Arc::new(Lambertian::new(Color::MAGENTA))
                     });
 
-                // Assuming transform.position is the center and transform.scale is the full size
-                let center = transform.position.map_or(Vec3::new(0.0,0.0,0.0), |p| p.into());
-                let size = transform.scale.map_or(Vec3::new(1.0,1.0,1.0), |s| s.into()); // Default size 1x1x1 if not specified
+                let translation_vec = transform.position.map_or(GlamVec3::ZERO, |p| GlamVec3::new(p.x, p.y, p.z));
+                let scale_vec = transform.scale.map_or(GlamVec3::ONE, |s| GlamVec3::new(s.x, s.y, s.z));
+                let rotation_angles_deg_json = transform.rotation.map_or(GlamVec3::ZERO, |r| GlamVec3::new(r.x, r.y, r.z));
                 
-                let bottom_center = center - Vec3::new(0.0, size.y * 0.5, 0.0);
+                // Convert Euler angles (degrees) to Quaternions for rotation
+                // Using YXZ order based on Tungsten source code hint
+                let rotation_quat = Quat::from_euler(
+                    glam::EulerRot::YXZ, 
+                    rotation_angles_deg_json.y.to_radians(),   // Y rotation angle
+                    rotation_angles_deg_json.x.to_radians(),   // X rotation angle
+                    rotation_angles_deg_json.z.to_radians()    // Z rotation angle
+                );
 
-                let cube = crate::objects::cube::Cube::new_pos_size(bottom_center, size, cube_material);
-                scene.add_object(Box::new(cube));
-                // eprintln!("Cube loading (with material '{}') partially implemented.", bsdf);
+                let transform_matrix = Mat4::from_scale_rotation_translation(scale_vec, rotation_quat, translation_vec);
+
+                let cube_obj = crate::objects::cube::Cube::new_transformed(transform_matrix, cube_material);
+
+                scene.add_object(Box::new(cube_obj));
             }
         }
     }
