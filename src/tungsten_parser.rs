@@ -112,25 +112,29 @@ pub enum ObjectConfigVariant {
         material: MaterialTypeConfig,
     },
     Mesh {
+        transform: ObjectTransformConfig,
+        #[serde(rename = "file")]
         path: String,
-        scale: Option<f32>, // Original mesh config
-        offset: Option<Vec3Config>,
-        rotation_y: Option<f32>,
-        material: MaterialTypeConfig,
+        bsdf: String,
+        smooth: Option<bool>,
+        backface_culling: Option<bool>,
+        recompute_normals: Option<bool>,
     },
-    // Added Quad variant
     Quad {
-        // Quads in Tungsten JSON have a transform and a bsdf reference.
-        // We will need to define how this transform maps to our Quad struct.
         transform: ObjectTransformConfig,
-        bsdf: String, // BSDF name to be resolved later
-        emission: Option<ColorConfig>, // For light quads
+        bsdf: String,
+        emission: Option<ColorConfig>,
     },
-    // Added Cube variant
     Cube {
-        // Cubes also have a transform and bsdf ref.
         transform: ObjectTransformConfig,
-        bsdf: String, // BSDF name to be resolved later
+        bsdf: String,
+    },
+    #[serde(rename = "infinite_sphere_cap")]
+    InfiniteSphereCap {
+        transform: ObjectTransformConfig,
+        power: Option<f32>,
+        sample: Option<bool>,
+        cap_angle: Option<f32>,
     },
 }
 
@@ -363,14 +367,26 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                 let plane = Plane::new(point.into(), normal.into(), plane_material);
                 scene.add_object(Box::new(plane));
             }
-            ObjectConfigVariant::Mesh { path, scale, offset, rotation_y, material } => {
-                // Mesh also uses inline material definition
-                let mesh_material_type_conf = material; // This is MaterialTypeConfig
-                let mesh_material: Arc<dyn Material> = match mesh_material_type_conf { /* ... similar to Sphere ... */ _ => Arc::new(Lambertian::new(Color::WHITE)) }; // Simplified
-                let s = scale.unwrap_or(1.0);
-                let o = offset.map_or(Vec3::new(0.0, 0.0, 0.0), |v_conf| v_conf.into());
-                let r_y = rotation_y.unwrap_or(0.0);
-                match Mesh::from_obj(&path, mesh_material, s, o, r_y) {
+            ObjectConfigVariant::Mesh { transform, path, bsdf, smooth, backface_culling, recompute_normals } => {
+                let mesh_material = parsed_bsdfs_map.get(&bsdf)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        eprintln!("Warning: BSDF '{}' not found for Mesh '{}'. Using default material.", bsdf, path);
+                        Arc::new(Lambertian::new(Color::MAGENTA))
+                    });
+
+                let _translation_vec = transform.position.map_or(GlamVec3::ZERO, |p| GlamVec3::new(p.x, p.y, p.z));
+                let _scale_vec = transform.scale.map_or(GlamVec3::ONE, |s| GlamVec3::new(s.x, s.y, s.z));
+                let _rotation_angles_deg = transform.rotation.map_or(GlamVec3::ZERO, |r| GlamVec3::new(r.x, r.y, r.z));
+                
+                eprintln!("Warning: Mesh loading for '{}': Full transformation is not yet applied. Using default scale/offset/rotation.", path);
+                if path.ends_with(".wo3") {
+                    eprintln!("Warning: .wo3 mesh file format for '{}' is not yet supported. Attempting to load as OBJ (will likely fail).", path);
+                }
+
+                // Using old from_obj with default transform values as a placeholder.
+                // This will need to be replaced with a new constructor that takes a Mat4.
+                match Mesh::from_obj(&path, mesh_material.clone(), 1.0, crate::vec3::Vec3::new(0.0, 0.0, 0.0), 0.0) {
                     Ok(mesh_obj) => scene.add_object(Box::new(mesh_obj)),
                     Err(e) => eprintln!("Error loading mesh '{}': {}", path, e),
                 }
@@ -443,6 +459,9 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                 let cube_obj = crate::objects::cube::Cube::new_transformed(transform_matrix, cube_material);
 
                 scene.add_object(Box::new(cube_obj));
+            }
+            ObjectConfigVariant::InfiniteSphereCap { transform: _obj_transform, power: _power, sample: _sample, cap_angle: _cap_angle } => {
+                eprintln!("Warning: 'infinite_sphere_cap' object type is recognized but not yet implemented for rendering.");
             }
         }
     }

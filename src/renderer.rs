@@ -73,7 +73,10 @@ pub fn trace_ray(
                 let pixel = skybox.get_pixel(x.min(skybox.width()-1), y.min(skybox.height()-1));
                 Color::new(pixel[0] as f32 / 255.0, pixel[1] as f32 / 255.0, pixel[2] as f32 / 255.0)
             } else {
-                 Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.5, 0.7, 1.0) * t
+                // some random sky color (it adds ambient light)
+                // Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.5, 0.7, 1.0) * t
+                // Default to black if no skybox image is present
+                Color::BLACK
             }
         }
     }
