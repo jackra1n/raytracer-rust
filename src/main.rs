@@ -24,6 +24,7 @@ fn main() {
 
     let scene_file_path_str = "data/scenes/tungsten/cornell-box/scene.json";
     // let scene_file_path_str = "data/scenes/tungsten/dragon/scene.json";
+    // let scene_file_path_str = "data/scenes/tungsten/volumetric-caustic/scene.json";
     // let scene_file_path_str = "data/scenes/mitsuba/cornell-box/scene_v3.xml";
     println!("Attempting to load scene from: {}", scene_file_path_str);
 

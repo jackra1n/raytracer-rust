@@ -15,6 +15,7 @@ use crate::objects::plane::Plane;
 use crate::mesh::mesh_object::Mesh;
 use std::collections::HashMap;
 use glam::{Mat4, Vec3 as GlamVec3, Quat};
+use std::path::Path;
 
 #[derive(Deserialize, Debug, Copy, Clone)]
 pub struct Vec3Config {
@@ -61,7 +62,15 @@ pub struct CameraConfig {
     pub aspect: Option<f32>, // aspect might not be in this specific JSON, but good to keep
     // Add other fields from JSON if needed, e.g., "type", "tonemap", "resolution"
     // For now, focusing on what Camera::new needs.
-    pub resolution: Option<[usize; 2]>, // Added resolution from JSON
+    pub resolution: Option<ResolutionConfig>,
+}
+
+// New enum to handle flexible resolution (either a single int or [width, height])
+#[derive(Deserialize, Debug, Clone)] // Added Clone for potential use in other structs if needed
+#[serde(untagged)]
+pub enum ResolutionConfig {
+    Square(usize),         // e.g., 1024 for 1024x1024
+    Explicit([usize; 2]), // e.g., [1280, 720]
 }
 
 #[derive(Deserialize, Debug)]
@@ -86,15 +95,19 @@ pub enum MaterialTypeConfig {
     },
 }
 
-// Define a generic transform config for objects if needed, or use specific fields.
-// For now, let's add specific fields directly to Quad and Cube if they are simple.
-// The JSON shows position, scale, rotation nested under "transform".
+// New enum to handle flexible scale (either a single float or a Vec3Config)
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)] // Allows Serde to try f32 first, then Vec3Config
+pub enum ScaleConfig {
+    Uniform(f32),
+    NonUniform(Vec3Config),
+}
 
 #[derive(Deserialize, Debug)]
-pub struct ObjectTransformConfig { // Similar to CameraTransformConfig but for objects
+pub struct ObjectTransformConfig { 
     pub position: Option<Vec3Config>,
-    pub scale: Option<Vec3Config>,    // Using Vec3 for non-uniform scale
-    pub rotation: Option<Vec3Config>, // Euler angles (degrees) a_x, a_y, a_z
+    pub scale: Option<ScaleConfig>,
+    pub rotation: Option<Vec3Config>, 
 }
 
 #[derive(Deserialize, Debug)]
@@ -102,9 +115,9 @@ pub struct ObjectTransformConfig { // Similar to CameraTransformConfig but for o
 #[serde(rename_all = "snake_case")]
 pub enum ObjectConfigVariant {
     Sphere {
-        center: Vec3Config,
-        radius: f32,
-        material: MaterialTypeConfig,
+        transform: ObjectTransformConfig,
+        radius: Option<f32>,
+        bsdf: String,
     },
     Plane {
         point: Vec3Config,
@@ -180,6 +193,7 @@ pub struct SceneConfig {
     // Note: The top-level "bsdfs" and "media" from JSON are not yet parsed here.
 }
 
+#[derive(Debug)]
 pub struct RenderSettings {
     pub width: usize,
     pub height: usize,
@@ -225,6 +239,11 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
     let data = std::fs::read_to_string(json_path)?;
     let config: SceneConfig = serde_json::from_str(&data)?;
 
+    // Get the directory of the scene_json_file to resolve relative paths for models/textures
+    let scene_dir = Path::new(json_path).parent().ok_or_else(|| 
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid scene JSON path")
+    )?;
+
     // Default values for render settings
     let mut width = 800;
     let mut height = 600;
@@ -232,10 +251,18 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
     let mut max_depth = 10;
 
     // Get width and height from camera.resolution if available
-    if let Some(res) = config.camera.resolution {
-        if res.len() == 2 {
-            width = res[0];
-            height = res[1];
+    if let Some(res_conf) = config.camera.resolution {
+        match res_conf {
+            ResolutionConfig::Square(s) => {
+                width = s;
+                height = s;
+            }
+            ResolutionConfig::Explicit(arr) => {
+                if arr.len() == 2 {
+                    width = arr[0];
+                    height = arr[1];
+                }
+            }
         }
     }
 
@@ -324,13 +351,14 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
     }
 
     if let Some(sky_conf) = &config.sky {
-        if let Some(tex_path) = &sky_conf.texture {
-            match image::open(tex_path) {
+        if let Some(tex_path_relative) = &sky_conf.texture {
+            let tex_path_abs = scene_dir.join(tex_path_relative);
+            match image::open(&tex_path_abs) {
                 Ok(img) => {
-                    println!("Successfully loaded skybox image: {}", tex_path);
+                    println!("Successfully loaded skybox image: {:?}", tex_path_abs);
                     scene.skybox_image = Some(img);
                 }
-                Err(e) => eprintln!("Error loading skybox image '{}': {}. Using default background.", tex_path, e),
+                Err(e) => eprintln!("Error loading skybox image '{:?}': {}. Using default background.", tex_path_abs, e),
             }
         }
     }
@@ -343,19 +371,40 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
         // let parse_material = |mat_conf: MaterialTypeConfig| -> Arc<dyn Material> { ... }; // Original closure
 
         match obj_conf_variant {
-            ObjectConfigVariant::Sphere { center, radius, material } => {
-                // Sphere still uses inline material definition as per our current SceneConfig structure
-                let sphere_material_type_conf = material; // This is MaterialTypeConfig
-                let sphere_material: Arc<dyn Material> = match sphere_material_type_conf {
-                    MaterialTypeConfig::Lambertian { albedo } => Arc::new(Lambertian::new(albedo.into())),
-                    MaterialTypeConfig::Texture { albedo, pixels, h_offset } => { /* ... */ Arc::new(Lambertian::new(Color::WHITE)) },
-                    MaterialTypeConfig::Metal { albedo, fuzz } => Arc::new(Metal::new(albedo.into(), fuzz)),
-                    MaterialTypeConfig::Glass { index_of_refraction } => Arc::new(Dielectric::new(index_of_refraction)),
-                    MaterialTypeConfig::Light {} => Arc::new(EmissiveLight::new(Color::new(10.0, 10.0, 10.0))),
+            ObjectConfigVariant::Sphere { transform, radius, bsdf } => {
+                let sphere_material = parsed_bsdfs_map.get(&bsdf)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        eprintln!("Warning: BSDF '{}' not found for Sphere. Using default material.", bsdf);
+                        Arc::new(Lambertian::new(Color::MAGENTA)) 
+                    });
+
+                let center_pos = transform.position.map_or(Vec3::new(0.0, 0.0, 0.0), |p| p.into());
+                
+                let sphere_radius = match radius {
+                    Some(r) => r,
+                    None => { // If radius field is missing, try to get it from scale
+                        match transform.scale {
+                            Some(ScaleConfig::Uniform(s)) => s,
+                            Some(ScaleConfig::NonUniform(v_conf)) => {
+                                // Using x-component of scale as radius if non-uniform and radius field is absent
+                                // Could also average x,y,z or warn if they are different for a sphere.
+                                if (v_conf.x - v_conf.y).abs() > 1e-6 || (v_conf.x - v_conf.z).abs() > 1e-6 {
+                                    eprintln!("Warning: Sphere parsed with non-uniform scale ({:?}) and no explicit radius. Using x-component for radius.", v_conf);
+                                }
+                                v_conf.x 
+                            },
+                            None => {
+                                eprintln!("Warning: Sphere has no explicit radius and no scale in transform. Defaulting to radius 0.5.");
+                                0.5 // Default if no radius and no scale
+                            }
+                        }
+                    }
                 };
+
                 let sphere = Sphere {
-                    center: center.into(),
-                    radius,
+                    center: center_pos,
+                    radius: sphere_radius,
                     material: sphere_material,
                 };
                 scene.add_object(Box::new(sphere));
@@ -375,20 +424,37 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                         Arc::new(Lambertian::new(Color::MAGENTA))
                     });
 
-                let _translation_vec = transform.position.map_or(GlamVec3::ZERO, |p| GlamVec3::new(p.x, p.y, p.z));
-                let _scale_vec = transform.scale.map_or(GlamVec3::ONE, |s| GlamVec3::new(s.x, s.y, s.z));
-                let _rotation_angles_deg = transform.rotation.map_or(GlamVec3::ZERO, |r| GlamVec3::new(r.x, r.y, r.z));
+                let translation_vec = transform.position.map_or(GlamVec3::ZERO, |p| GlamVec3::new(p.x, p.y, p.z));
                 
-                eprintln!("Warning: Mesh loading for '{}': Full transformation is not yet applied. Using default scale/offset/rotation.", path);
-                if path.ends_with(".wo3") {
-                    eprintln!("Warning: .wo3 mesh file format for '{}' is not yet supported. Attempting to load as OBJ (will likely fail).", path);
-                }
+                let scale_vec = match transform.scale {
+                    Some(ScaleConfig::Uniform(s)) => GlamVec3::splat(s),
+                    Some(ScaleConfig::NonUniform(v_conf)) => GlamVec3::new(v_conf.x, v_conf.y, v_conf.z),
+                    None => GlamVec3::ONE,
+                };
 
-                // Using old from_obj with default transform values as a placeholder.
-                // This will need to be replaced with a new constructor that takes a Mat4.
-                match Mesh::from_obj(&path, mesh_material.clone(), 1.0, crate::vec3::Vec3::new(0.0, 0.0, 0.0), 0.0) {
-                    Ok(mesh_obj) => scene.add_object(Box::new(mesh_obj)),
-                    Err(e) => eprintln!("Error loading mesh '{}': {}", path, e),
+                let rotation_angles_deg_json = transform.rotation.map_or(GlamVec3::ZERO, |r| GlamVec3::new(r.x, r.y, r.z));
+                
+                let rotation_quat = Quat::from_euler(
+                    glam::EulerRot::YXZ, 
+                    rotation_angles_deg_json.y.to_radians(),
+                    rotation_angles_deg_json.x.to_radians(),
+                    rotation_angles_deg_json.z.to_radians()
+                );
+
+                let object_to_world_matrix = Mat4::from_scale_rotation_translation(scale_vec, rotation_quat, translation_vec);
+                
+                let model_path_abs = scene_dir.join(&path);
+
+                if path.ends_with(".wo3") {
+                    match Mesh::from_wo3(model_path_abs.to_str().unwrap_or_default(), mesh_material.clone(), object_to_world_matrix) {
+                        Ok(mesh_obj) => scene.add_object(Box::new(mesh_obj)),
+                        Err(e) => eprintln!("Error loading .wo3 mesh '{:?}': {}", model_path_abs, e),
+                    }
+                } else { 
+                    match Mesh::from_obj(model_path_abs.to_str().unwrap_or_default(), mesh_material.clone(), object_to_world_matrix) {
+                        Ok(mesh_obj) => scene.add_object(Box::new(mesh_obj)),
+                        Err(e) => eprintln!("Error loading .obj mesh '{:?}': {}", model_path_abs, e),
+                    }
                 }
             }
             ObjectConfigVariant::Quad { transform, bsdf, emission } => {
@@ -405,7 +471,12 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
 
                 let center = transform.position.map_or(Vec3::new(0.0,0.0,0.0), |p| p.into());
                 // Scale in JSON is full dimensions [width, height, depth] for the object in its local orientation
-                let json_scale = transform.scale.map_or(Vec3::new(1.0,1.0,1.0), |s| s.into()); 
+                let json_scale = match transform.scale {
+                    Some(ScaleConfig::Uniform(s)) => Vec3::new(s, s, s),
+                    Some(ScaleConfig::NonUniform(v_conf)) => v_conf.into(),
+                    None => Vec3::new(1.0, 1.0, 1.0),
+                };
+
                 // Rotation is Vec3(ax, ay, az) in degrees. Not used by new_axis_aligned yet.
                 // let rotation = transform.rotation.map_or(Vec3::new(0.0,0.0,0.0), |r| r.into());
 
@@ -442,11 +513,15 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                     });
 
                 let translation_vec = transform.position.map_or(GlamVec3::ZERO, |p| GlamVec3::new(p.x, p.y, p.z));
-                let scale_vec = transform.scale.map_or(GlamVec3::ONE, |s| GlamVec3::new(s.x, s.y, s.z));
+                
+                let scale_vec = match transform.scale {
+                    Some(ScaleConfig::Uniform(s)) => GlamVec3::splat(s),
+                    Some(ScaleConfig::NonUniform(v_conf)) => GlamVec3::new(v_conf.x, v_conf.y, v_conf.z),
+                    None => GlamVec3::ONE,
+                };
+                
                 let rotation_angles_deg_json = transform.rotation.map_or(GlamVec3::ZERO, |r| GlamVec3::new(r.x, r.y, r.z));
                 
-                // Convert Euler angles (degrees) to Quaternions for rotation
-                // Using YXZ order based on Tungsten source code hint
                 let rotation_quat = Quat::from_euler(
                     glam::EulerRot::YXZ, 
                     rotation_angles_deg_json.y.to_radians(),   // Y rotation angle

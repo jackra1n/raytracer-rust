@@ -8,6 +8,7 @@ use crate::objects::cube::Cube;
 use crate::vec3::Vec3;
 use std::sync::Arc;
 use image::DynamicImage;
+use glam::{Mat4, Quat, Vec3 as GlamVec3};
 
 
 
@@ -33,12 +34,10 @@ fn load_mesh(
     scene: &mut Scene,
     path: &str,
     material: Arc<dyn Material>,
-    scale: f32,
-    offset: Vec3,
-    rotation_y: f32,
+    object_to_world: Mat4,
 ) {
     println!("Attempting to load mesh: {}", path);
-    match Mesh::from_obj(path, material, scale, offset, rotation_y) {
+    match Mesh::from_obj(path, material, object_to_world) {
         Ok(mesh) => {
             println!(
                 "Loaded '{}' with {} triangles. Center: {:?}, Extent: {:?}",
@@ -132,37 +131,46 @@ pub fn init_scene() -> Scene {
     )));
 
     let amogus_pos = Vec3::new(0.0, -100.0, 200.0);
-    let amogus_scale = 3.0;
+    let amogus_scale_val = 3.0;
+    let amogus_rotation_y_deg = 180.0f32;
+
+    let translation1 = Mat4::from_translation(GlamVec3::new(amogus_pos.x, amogus_pos.y, amogus_pos.z));
+    let rotation1 = Mat4::from_rotation_y(amogus_rotation_y_deg.to_radians());
+    let scale1 = Mat4::from_scale(GlamVec3::splat(amogus_scale_val));
+    let transform1 = translation1 * rotation1 * scale1;
+
     load_mesh(
         &mut scene,
         "models/amogus/obj/sus.obj",
         red_plastic_mat,
-        amogus_scale,
-        amogus_pos,
-        180.0,
+        transform1,
     );
 
-    let amogus_pos = Vec3::new(-350.0, -100.0, 200.0);
-    let amogus_scale = 3.0;
+    let amogus_pos2 = Vec3::new(-350.0, -100.0, 200.0);
+    let translation2 = Mat4::from_translation(GlamVec3::new(amogus_pos2.x, amogus_pos2.y, amogus_pos2.z));
+    let rotation2 = Mat4::from_rotation_y(amogus_rotation_y_deg.to_radians());
+    let scale2 = Mat4::from_scale(GlamVec3::splat(amogus_scale_val));
+    let transform2 = translation2 * rotation2 * scale2;
+
     load_mesh(
         &mut scene,
         "models/amogus/obj/sus.obj",
         glass_mat.clone(),
-        amogus_scale,
-        amogus_pos,
-        180.0,
+        transform2,
     );
 
 
-    let amogus_pos = Vec3::new(350.0, -100.0, 200.0);
-    let amogus_scale = 3.0;
+    let amogus_pos3 = Vec3::new(350.0, -100.0, 200.0);
+    let translation3 = Mat4::from_translation(GlamVec3::new(amogus_pos3.x, amogus_pos3.y, amogus_pos3.z));
+    let rotation3 = Mat4::from_rotation_y(amogus_rotation_y_deg.to_radians());
+    let scale3 = Mat4::from_scale(GlamVec3::splat(amogus_scale_val));
+    let transform3 = translation3 * rotation3 * scale3;
+
     load_mesh(
         &mut scene,
         "models/amogus/obj/sus.obj",
         default_mirror_mat.clone(),
-        amogus_scale,
-        amogus_pos,
-        180.0,
+        transform3,
     );
 
     scene
