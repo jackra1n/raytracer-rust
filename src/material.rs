@@ -1,123 +1,159 @@
 use crate::color::Color;
+use crate::ray::Ray;
+use crate::hittable::HitRecord;
+use crate::vec3::Vec3;
+use rand::{Rng, RngCore};
 
-#[derive(Clone, Copy, Debug)]
-pub struct Material {
-    pub color: Color,
-    pub reflectivity: f32, // mirror-like reflections
-    pub specular_intensity: f32, // strength of the specular highlight
-    pub shininess: f32,      // exponent for specular highlight size
-    pub emissive_color: Option<Color>, // color emitted by the material
-    pub transparency: f32,
+
+const EPSILON: f32 = 1e-4;
+
+pub trait Material: Send + Sync {
+    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)>;
+    fn emitted(&self, _u: f32, _v: f32, _p: &Vec3) -> Color {
+        Color::BLACK
+    }
+}
+
+pub struct Lambertian {
+    pub albedo: Color,
+}
+
+impl Lambertian {
+    pub fn new(albedo: Color) -> Self { Self { albedo } }
+}
+
+impl Material for Lambertian {
+    fn scatter(&self, _ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
+        let mut scatter_direction = hit_record.normal + Vec3::random_in_unit_sphere(rng).normalized();
+
+        if scatter_direction.near_zero() {
+            scatter_direction = hit_record.normal;
+        }
+
+        let scattered_origin = hit_record.position + hit_record.normal * EPSILON;
+        let scattered_ray = Ray::new(scattered_origin, scatter_direction.normalized());
+        Some((scattered_ray, self.albedo))
+    }
+}
+
+pub struct Metal {
+    pub albedo: Color,
+    pub fuzz: f32,
+}
+
+impl Metal {
+    pub fn new(albedo: Color, fuzz: f32) -> Self { Self { albedo, fuzz: fuzz.clamp(0.0, 1.0) } }
+}
+
+impl Material for Metal {
+    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
+        let reflected_direction = reflect(ray_in.direction.normalized(), hit_record.normal);
+        
+        let fuzzed_direction = if self.fuzz > 0.0 {
+            reflected_direction + Vec3::random_in_unit_sphere(rng) * self.fuzz
+        } else {
+            reflected_direction
+        };
+
+        if fuzzed_direction.dot(hit_record.normal) > 0.0 {
+            let scattered_origin = hit_record.position + hit_record.normal * EPSILON;
+            let scattered_ray = Ray::new(scattered_origin, fuzzed_direction.normalized());
+            Some((scattered_ray, self.albedo))
+        } else {
+            None
+        }
+    }
+}
+
+pub struct Dielectric {
     pub refractive_index: f32,
 }
 
-impl Material {
+impl Dielectric {
+    pub fn new(refractive_index: f32) -> Self { Self { refractive_index } }
+}
 
-    pub fn builder() -> MaterialBuilder {
-        MaterialBuilder::new()
+impl Material for Dielectric {
+    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
+        let attenuation = Color::WHITE;
+
+        let refraction_ratio = if hit_record.front_face {
+            1.0 / self.refractive_index
+        } else {
+            self.refractive_index / 1.0
+        };
+
+        let unit_direction = ray_in.direction.normalized();
+        
+        let cos_theta = (-unit_direction).dot(hit_record.normal).min(1.0);
+        let sin_theta_squared = 1.0 - cos_theta * cos_theta;
+
+        let cannot_refract = refraction_ratio * refraction_ratio * sin_theta_squared > 1.0;
+        let scatter_direction: Vec3;
+
+        let reflectance = schlick_reflectance(cos_theta, 1.0 / refraction_ratio);
+
+        if cannot_refract || reflectance > rng.random::<f32>() {
+            scatter_direction = reflect(unit_direction, hit_record.normal);
+        } else {
+            scatter_direction = refract(unit_direction, hit_record.normal, refraction_ratio)
+                                .expect("Refraction failed unexpectedly after check");
+        }
+        
+        let scattered_origin = if scatter_direction.dot(hit_record.normal) > 0.0 {
+             hit_record.position + hit_record.normal * EPSILON 
+        } else {
+             hit_record.position - hit_record.normal * EPSILON 
+        };
+
+        let scattered_ray = Ray::new(scattered_origin, scatter_direction.normalized());
+        Some((scattered_ray, attenuation))
     }
 
-    pub fn new_emissive(color: Color) -> Self {
-        Self {
-            color: Color::new(0.0, 0.0, 0.0),
-            reflectivity: 0.0,
-            specular_intensity: 0.0,
-            shininess: 0.0,
-            emissive_color: Some(color),
-            transparency: 0.0,
-            refractive_index: 1.0,
-        }
-    }
-
-    pub fn mirror() -> Self {
-        Self {
-            color: Color::new(0.9, 0.9, 0.9),
-            reflectivity: 0.97,
-            specular_intensity: 0.0,
-            shininess: 0.0,
-            emissive_color: None,
-            transparency: 0.0,
-            refractive_index: 0.0,
-        }
-    }
-
-    pub fn glass() -> Self {
-        Self {
-            color: Color::new(0.95, 0.95, 1.0),
-            reflectivity: 0.05,
-            specular_intensity: 0.8,
-            shininess: 200.0,
-            emissive_color: None,
-            transparency: 0.8,
-            refractive_index: 1.5,
-        }
+    fn emitted(&self, _u: f32, _v: f32, _p: &Vec3) -> Color {
+        Color::BLACK
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct MaterialBuilder {
-    color: Color,
-    reflectivity: f32,
-    specular_intensity: f32,
-    shininess: f32,
-    emissive_color: Option<Color>,
-    transparency: f32,
-    refractive_index: f32,
+
+pub struct EmissiveLight {
+    pub color: Color,
 }
 
-impl MaterialBuilder {
-    pub fn new() -> Self {
-        Self {
-            color: Color::new(0.8, 0.8, 0.8),
-            reflectivity: 0.0,
-            specular_intensity: 0.1,
-            shininess: 10.0,
-            emissive_color: None,
-            transparency: 0.0,
-            refractive_index: 1.0,
-        }
+impl EmissiveLight {
+    pub fn new(color: Color) -> Self { Self { color } }
+}
+
+impl Material for EmissiveLight {
+    fn scatter(&self, _ray_in: &Ray, _hit_record: &HitRecord, _rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
+        None
     }
 
-    pub fn color(mut self, color: Color) -> Self {
-        self.color = color;
-        self
+    fn emitted(&self, _u: f32, _v: f32, _p: &Vec3) -> Color {
+        self.color
     }
+}
+fn reflect(v: Vec3, n: Vec3) -> Vec3 {
+    v - n * 2.0 * v.dot(n)
+}
 
-    pub fn reflectivity(mut self, reflectivity: f32) -> Self {
-        self.reflectivity = reflectivity.clamp(0.0, 1.0);
-        self
-    }
+fn refract(uv: Vec3, n: Vec3, etai_over_etat: f32) -> Option<Vec3> {
+    let cos_theta = (-uv).dot(n).min(1.0);
+    let r_out_perp = (uv + n * cos_theta) * etai_over_etat;
+    let r_out_parallel_squared = 1.0 - r_out_perp.length_squared();
 
-    pub fn specular(mut self, intensity: f32, shininess: f32) -> Self {
-        self.specular_intensity = intensity.clamp(0.0, 1.0);
-        self.shininess = shininess.max(1.0);
-        self
+    if r_out_parallel_squared < 0.0 {
+        None
+    } else {
+        let r_out_parallel = n * (-r_out_parallel_squared.sqrt());
+        Some(r_out_perp + r_out_parallel)
     }
+}
 
-    pub fn emissive(mut self, color: Color) -> Self {
-        self.emissive_color = Some(color);
-        self.color = Color::new(0.0, 0.0, 0.0);
-        self.reflectivity = 0.0;
-        self.specular_intensity = 0.0;
-        self.transparency = 0.0;
-        self
-    }
-
-    pub fn transparency(mut self, transparency: f32, refractive_index: f32) -> Self {
-        self.transparency = transparency.clamp(0.0, 1.0);
-        self.refractive_index = refractive_index.max(1.0);
-        self
-    }
-
-    pub fn build(self) -> Material {
-        Material {
-            color: self.color,
-            reflectivity: self.reflectivity,
-            specular_intensity: self.specular_intensity,
-            shininess: self.shininess,
-            emissive_color: self.emissive_color,
-            transparency: self.transparency,
-            refractive_index: self.refractive_index,
-        }
-    }
+fn schlick_reflectance(cosine: f32, ref_idx_ratio: f32) -> f32 {
+    let r0_num = 1.0 - ref_idx_ratio;
+    let r0_den = 1.0 + ref_idx_ratio;
+    let mut r0 = r0_num / r0_den;
+    r0 = r0 * r0;
+    r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
 }

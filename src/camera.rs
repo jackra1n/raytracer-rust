@@ -30,7 +30,7 @@ impl Camera {
         }
     }
 
-    pub fn get_ray_uv(&self, u: f32, v: f32) -> Ray {
+    pub fn get_ray(&self, u: f32, v: f32) -> Ray {
         let ndc_x = 2.0 * u - 1.0;
         let ndc_y = 1.0 - 2.0 * v;
 
