@@ -79,7 +79,7 @@ fn main() {
             println!("Window closed.");
         }
         Err(e) => {
-            eprintln!("Failed to load and render scene from '{}': {}", scene_file_path_str, e);
+            eprintln!("Failed to load and render scene from '{}': {}", scene_path_str, e);
             return;
         }
     }

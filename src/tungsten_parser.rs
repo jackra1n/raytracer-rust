@@ -1,15 +1,11 @@
-// This file will be renamed from scene_config.rs to tungsten_parser.rs
-// Its content will be adapted later for the Tungsten JSON format.
-// For now, it contains the JSON parsing logic we developed previously.
-
 use serde::Deserialize;
 use std::sync::Arc;
 use crate::vec3::Vec3;
 use crate::color::Color;
-use crate::material::{Material, Lambertian, Metal, Dielectric, EmissiveLight, self, RoughConductor, NullMaterial};
+use crate::material::{Material, Lambertian, Metal, Dielectric, EmissiveLight, self, NullMaterial};
 use crate::camera::Camera;
 use crate::scene::Scene;
-use image::{DynamicImage, GenericImageView, RgbaImage};
+use image::RgbaImage;
 use crate::objects::sphere::Sphere;
 use crate::objects::plane::Plane;
 use crate::mesh::mesh_object::Mesh;
@@ -378,7 +374,7 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                 "rough_conductor" => {
                     // Defaults
                     let mut albedo = Color::new(1.0, 1.0, 1.0);
-                    let mut roughness = 0.1;
+                    let mut roughness = 0.1; // Default if not specified in JSON
                     let mut metal_type = material::MetalType::Cu;
                     let mut distribution = material::MicrofacetDistribution::GGX;
 
@@ -390,14 +386,13 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                             albedo = Color::new(gray_val, gray_val, gray_val);
                         }
                     }
-                    // Parse roughness
-                    if let Some(roughness_val) = bsdf_conf.ior {
-                        roughness = roughness_val;
-                    } else if let Some(roughness_val) = bsdf_conf.albedo.as_ref().and_then(|v| v.get("roughness")).and_then(|v| v.as_f64()) {
-                        roughness = roughness_val as f32;
+                    // Parse roughness correctly from bsdf_conf.roughness
+                    if let Some(r_val) = bsdf_conf.roughness {
+                        roughness = r_val;
                     }
+
                     // Parse metal type
-                    if let Some(mat_str) = bsdf_conf.albedo.as_ref().and_then(|v| v.get("material")).and_then(|v| v.as_str()) {
+                    if let Some(mat_str) = bsdf_conf.material.as_ref() { // Use bsdf_conf.material directly
                         metal_type = match mat_str.to_lowercase().as_str() {
                             "cu" => material::MetalType::Cu,
                             "au" => material::MetalType::Au,
@@ -407,15 +402,21 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                             "ti" => material::MetalType::Ti,
                             "fe" => material::MetalType::Fe,
                             "pb" => material::MetalType::Pb,
-                            _ => material::MetalType::Cu,
+                             _ => { 
+                                eprintln!("Warning: Unknown metal type '{}' for rough_conductor, defaulting to Cu.", mat_str);
+                                material::MetalType::Cu 
+                            }
                         };
                     }
                     // Parse distribution
-                    if let Some(dist_str) = bsdf_conf.albedo.as_ref().and_then(|v| v.get("distribution")).and_then(|v| v.as_str()) {
+                    if let Some(dist_str) = bsdf_conf.distribution.as_ref() { // Use bsdf_conf.distribution directly
                         distribution = match dist_str.to_lowercase().as_str() {
                             "ggx" => material::MicrofacetDistribution::GGX,
                             "beckmann" => material::MicrofacetDistribution::Beckmann,
-                            _ => material::MicrofacetDistribution::GGX,
+                            _ => { 
+                                eprintln!("Warning: Unknown distribution '{}' for rough_conductor, defaulting to GGX.", dist_str);
+                                material::MicrofacetDistribution::GGX 
+                            }
                         };
                     }
                     Ok(MaterialTypeConfig::RoughConductor { albedo: ColorConfig(albedo.r, albedo.g, albedo.b), roughness, metal_type, distribution })
@@ -985,7 +986,7 @@ fn parse_primitives(
                         0.0
                     }
                 };
-                let intensity = (power_f32 / 100.0).clamp(0.0, 50.0);
+                let intensity = power_f32;
                 let emissive_color = Color::new(intensity, intensity, intensity);
                 material_to_use = Some(Arc::new(EmissiveLight::new(emissive_color)));
                 // ---- DEBUG PRINT ----
