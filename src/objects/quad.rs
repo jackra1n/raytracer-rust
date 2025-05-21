@@ -4,59 +4,70 @@ use crate::ray::Ray;
 use crate::vec3::Vec3;
 use std::sync::Arc;
 use crate::renderer::EPSILON; // For comparisons
+use glam::{Mat4, Vec3A as GlamVec3A}; // Using Vec3A for SIMD alignment if Mat4 expects it
 
-#[derive(Clone)] // Added Clone for potential future use, not strictly needed by Hittable now
+#[derive(Clone)]
 pub struct Quad {
-    p0: Vec3,       // Min corner (x0, y_k, z0)
-    p1: Vec3,       // Max corner (x1, y_k, z1)
-    normal: Vec3,   // Normal of the quad's plane
+    base: Vec3,      // One corner of the quad (world space, e.g. transformed local (-0.5, 0, -0.5))
+    edge0: Vec3,     // Vector along one edge from base (world space)
+    edge1: Vec3,     // Vector along the other edge from base (world space)
+    normal: Vec3,    // Unit normal vector of the quad's plane
+    d: f32,          // Constant in plane equation normal.dot(P) - d = 0
     material: Arc<dyn Material>,
-    d: f32,         // Constant in plane equation normal.dot(P) - d = 0
-    w: Vec3,        // Normal vector for area calculation, not necessarily unit
+    inv_edge0_len_sq: f32,
+    inv_edge1_len_sq: f32,
+    // Optional: area for emissive quads
+    // pub area: f32,
 }
 
 impl Quad {
-    // Creates an axis-aligned quad on a plane parallel to XZ, YZ, or XY
-    // center: center of the quad
-    // size: Vec3(width, height, depth) - relevant components used based on major_axis
-    // major_axis: 0 for YZ plane (normal along X), 1 for XZ plane (normal along Y), 2 for XY plane (normal along Z)
-    // material: the material of the quad
-    pub fn new_axis_aligned(center: Vec3, size: Vec3, major_axis: usize, material: Arc<dyn Material>) -> Self {
-        let half_size = size * 0.5;
-        let mut p0 = center - half_size;
-        let mut p1 = center + half_size;
-        let normal;
-        let d;
+    // Creates a quad from a transformation matrix applied to a canonical 1x1 quad
+    // in the local XZ plane (Y=0), centered at the origin.
+    pub fn new_transformed(transform: Mat4, material: Arc<dyn Material>) -> Self {
+        // Canonical quad vertices (1x1 in XZ plane, Y=0, centered at origin)
+        // A: (-0.5, 0.0, -0.5) - this will be the base
+        // B: ( 0.5, 0.0, -0.5) - base + local_edge0
+        // D: (-0.5, 0.0,  0.5) - base + local_edge1
+        let v_a_local = GlamVec3A::new(-0.5, 0.0, -0.5);
+        let v_b_local = GlamVec3A::new( 0.5, 0.0, -0.5);
+        let v_d_local = GlamVec3A::new(-0.5, 0.0,  0.5);
 
-        match major_axis {
-            0 => { // YZ plane, normal along X
-                normal = Vec3::new(1.0, 0.0, 0.0);
-                p0.x = center.x; // Quad lies on this X plane
-                p1.x = center.x;
-                d = normal.dot(center);
-            }
-            1 => { // XZ plane, normal along Y
-                normal = Vec3::new(0.0, 1.0, 0.0);
-                p0.y = center.y; // Quad lies on this Y plane
-                p1.y = center.y;
-                d = normal.dot(center);
-            }
-            2 => { // XY plane, normal along Z
-                normal = Vec3::new(0.0, 0.0, 1.0);
-                p0.z = center.z; // Quad lies on this Z plane
-                p1.z = center.z;
-                d = normal.dot(center);
-            }
-            _ => panic!("Invalid major_axis for Quad, must be 0, 1, or 2"),
-        }
+        // Transform points to world space
+        let base_w_glam = (transform * v_a_local.extend(1.0)).truncate();
+        let p_b_w_glam = (transform * v_b_local.extend(1.0)).truncate();
+        let p_d_w_glam = (transform * v_d_local.extend(1.0)).truncate();
+
+        let base = Vec3::new(base_w_glam.x, base_w_glam.y, base_w_glam.z);
+        let p_b_w = Vec3::new(p_b_w_glam.x, p_b_w_glam.y, p_b_w_glam.z);
+        let p_d_w = Vec3::new(p_d_w_glam.x, p_d_w_glam.y, p_d_w_glam.z);
+
+        let edge0 = p_b_w - base;
+        let edge1 = p_d_w - base;
         
-        // w is for area calculation, related to edges, not necessarily unit normal.
-        // For an XZ quad (axis 1): edge0 along X, edge1 along Z.
-        // This needs to be set up carefully based on p0, p1 for UVs / area later if needed.
-        // For now, a simple placeholder for `w` as it's not used in hit.
-        let w_placeholder = p1 - p0; // Not a proper normal for area, but fills the field
+        // Normal: Tungsten uses edge1.cross(edge0). Our cross product: X.cross(Z) = -Y.
+        // If local edge0 is +X (0.5 - (-0.5) = 1,0,0) and local edge1 is +Z (0,0,1),
+        // then transformed edge0 and edge1.
+        // For CCW winding A, B, C(B+D-A), D, normal is (B-A).cross(D-A)
+        // So edge0.cross(edge1)
+        let normal = edge0.cross(edge1).normalized();
+        let d = normal.dot(base);
 
-        Self { p0, p1, normal, material, d, w: w_placeholder }
+        let edge0_len_sq = edge0.length_squared();
+        let edge1_len_sq = edge1.length_squared();
+
+        // let area = (edge0.cross(edge1)).length(); // For emissive sampling
+
+        Self {
+            base,
+            edge0,
+            edge1,
+            normal,
+            d,
+            material,
+            inv_edge0_len_sq: if edge0_len_sq > EPSILON { 1.0 / edge0_len_sq } else { 0.0 },
+            inv_edge1_len_sq: if edge1_len_sq > EPSILON { 1.0 / edge1_len_sq } else { 0.0 },
+            // area,
+        }
     }
 }
 
@@ -64,9 +75,8 @@ impl Hittable for Quad {
     fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
         let denom = self.normal.dot(ray.direction);
 
-        // Ray is parallel to the plane or pointing away from the plane (if one-sided)
-        // For two-sided quads, allow hitting from behind by checking abs(denom).
-        if denom.abs() < EPSILON { // Ray is parallel
+        // Ray is parallel to the plane
+        if denom.abs() < EPSILON {
             return None;
         }
 
@@ -77,31 +87,26 @@ impl Hittable for Quad {
         }
 
         let hit_pos = ray.at(t);
+        let v_hit_to_base = hit_pos - self.base;
 
-        // Check if hit_pos is within the quad boundaries
-        // This depends on which plane the quad lies on.
-        // For an XZ quad (normal along Y): check X and Z bounds.
-        // For a YZ quad (normal along X): check Y and Z bounds.
-        // For an XY quad (normal along Z): check X and Y bounds.
+        // Parametric check ( barycentric coords for parallelogram)
+        // l0 = (v_hit_to_base . edge0) / edge0.length_squared()
+        // l1 = (v_hit_to_base . edge1) / edge1.length_squared()
+        let l0 = v_hit_to_base.dot(self.edge0) * self.inv_edge0_len_sq;
+        let l1 = v_hit_to_base.dot(self.edge1) * self.inv_edge1_len_sq;
         
-        let mut within_bounds = false;
-        if self.normal.x.abs() > 0.9 { // YZ plane (normal along X)
-            within_bounds = hit_pos.y >= self.p0.y && hit_pos.y <= self.p1.y &&
-                            hit_pos.z >= self.p0.z && hit_pos.z <= self.p1.z;
-        } else if self.normal.y.abs() > 0.9 { // XZ plane (normal along Y)
-            within_bounds = hit_pos.x >= self.p0.x && hit_pos.x <= self.p1.x &&
-                            hit_pos.z >= self.p0.z && hit_pos.z <= self.p1.z;
-        } else if self.normal.z.abs() > 0.9 { // XY plane (normal along Z)
-            within_bounds = hit_pos.x >= self.p0.x && hit_pos.x <= self.p1.x &&
-                            hit_pos.y >= self.p0.y && hit_pos.y <= self.p1.y;
-        }
-
-        if !within_bounds {
+        // Check if hit is within the parallelogram defined by base, edge0, edge1
+        if !(l0 >= -EPSILON && l0 <= 1.0 + EPSILON && l1 >= -EPSILON && l1 <= 1.0 + EPSILON) {
+            // Using EPSILON for float comparisons at boundaries
             return None;
         }
-
-        let front_face = ray.direction.dot(self.normal) < 0.0;
+        
+        let front_face = ray.direction.dot(self.normal) < 0.0; // Standard definition
         let hit_normal = if front_face { self.normal } else { -self.normal };
+
+        // UV coordinates (optional, but good for texturing/emission)
+        // let u = l0;
+        // let v = l1;
 
         Some(HitRecord {
             t,
@@ -109,6 +114,8 @@ impl Hittable for Quad {
             normal: hit_normal,
             material: self.material.clone(),
             front_face,
+            // u, 
+            // v,
         })
     }
 } 

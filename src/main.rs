@@ -9,7 +9,6 @@ mod objects;
 mod mesh;
 mod renderer;
 mod tungsten_parser;
-mod mitsuba_parser;
 
 use minifb::{Key, Window, WindowOptions};
 use indicatif::HumanDuration;
@@ -22,9 +21,12 @@ use crate::tungsten_parser::RenderSettings;
 fn main() {
     let start_time = Instant::now();
 
-    let scene_file_path_str = "data/scenes/tungsten/cornell-box/scene.json";
+    // let scene_file_path_str = "data/scenes/tungsten/cornell-box/scene.json";
+    // let scene_file_path_str = "data/scenes/tungsten/teapot/scene.json";
+    // let scene_file_path_str = "data/scene_from_rust.json";
     // let scene_file_path_str = "data/scenes/tungsten/dragon/scene.json";
     // let scene_file_path_str = "data/scenes/tungsten/volumetric-caustic/scene.json";
+    let scene_file_path_str = "data/scenes/tungsten/veach-mis/scene.json";
     // let scene_file_path_str = "data/scenes/mitsuba/cornell-box/scene_v3.xml";
     println!("Attempting to load scene from: {}", scene_file_path_str);
 
@@ -34,10 +36,6 @@ fn main() {
         Some("json") => {
             println!("Detected JSON scene file.");
             tungsten_parser::load_scene_from_json(scene_file_path_str)
-        }
-        Some("xml") => {
-            println!("Detected XML scene file.");
-            mitsuba_parser::load_scene_from_xml(scene_file_path_str)
         }
         _ => {
             eprintln!("Unsupported scene file type or no extension: {}", scene_file_path_str);

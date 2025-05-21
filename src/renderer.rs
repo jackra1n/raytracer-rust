@@ -4,6 +4,7 @@ use crate::hittable::{Hittable};
 use crate::ray::Ray;
 use crate::scene::Scene;
 use crate::tungsten_parser::RenderSettings;
+use crate::vec3::Vec3;
 
 use chrono::Local;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgb};
@@ -54,28 +55,44 @@ pub fn trace_ray(
                     emitted_light + attenuation_color * scattered_color
                 }
                 None => {
+                    // Material doesn't scatter (e.g., it's a light source or a perfect absorber).
+                    // Return only the light emitted by the material itself.
                     emitted_light
                 }
             }
         }
         None => {
-            // ray missed all objects, return background/sky color
-            let unit_direction = ray_in.direction.normalized();
-            let t = 0.5 * (unit_direction.y + 1.0); // y is up
-            // Check if skybox_image exists and use it
-            if let Some(skybox_dynamic) = &scene.skybox_image {
-                // Convert DynamicImage to a specific image type (e.g., Rgba8Image) to use get_pixel
-                let skybox = skybox_dynamic.to_rgba8(); // Convert to Rgba8Image
-                let u = 0.5 + unit_direction.x.atan2(unit_direction.z) / (2.0 * std::f32::consts::PI);
-                let v = 0.5 - unit_direction.y.asin() / std::f32::consts::PI;
-                let x = (u * (skybox.width() - 1) as f32).max(0.0) as u32;
-                let y = (v * (skybox.height() - 1) as f32).max(0.0) as u32;
-                let pixel = skybox.get_pixel(x.min(skybox.width()-1), y.min(skybox.height()-1));
+            // Ray MISSED all objects. Apply skybox or default background.
+            if let Some(hdr_skybox) = &scene.skybox_hdr_image {
+                let dir = ray_in.direction.normalized();
+                let theta = dir.y.acos();
+                let phi = dir.z.atan2(dir.x) + std::f32::consts::PI;
+                let u = phi / (2.0 * std::f32::consts::PI);
+                let v = theta / std::f32::consts::PI;
+
+                let x_pixel = (u * (hdr_skybox.width() - 1) as f32).max(0.0) as u32;
+                let y_pixel = (v * (hdr_skybox.height() - 1) as f32).max(0.0) as u32;
+                
+                let pixel = hdr_skybox.get_pixel(x_pixel.min(hdr_skybox.width() - 1), y_pixel.min(hdr_skybox.height() - 1));
+                Color::new(pixel[0], pixel[1], pixel[2]) // Rgb<f32> values are directly usable
+            } else if let Some(skybox) = &scene.skybox_image {
+                let skybox_rgba = skybox.to_rgba8(); // Convert LDR to Rgba8Image
+                let dir = ray_in.direction.normalized();
+                let theta = dir.y.acos();
+                let phi = dir.z.atan2(dir.x) + std::f32::consts::PI;
+                let u = phi / (2.0 * std::f32::consts::PI);
+                let v = theta / std::f32::consts::PI;
+
+                let x_pixel = (u * (skybox_rgba.width() - 1) as f32).max(0.0) as u32;
+                let y_pixel = (v * (skybox_rgba.height() - 1) as f32).max(0.0) as u32;
+                
+                let pixel = skybox_rgba.get_pixel(x_pixel.min(skybox_rgba.width() -1), y_pixel.min(skybox_rgba.height()-1));
                 Color::new(pixel[0] as f32 / 255.0, pixel[1] as f32 / 255.0, pixel[2] as f32 / 255.0)
             } else {
-                // some random sky color (it adds ambient light)
-                // Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.5, 0.7, 1.0) * t
-                // Default to black if no skybox image is present
+                // Default procedural background color if no skybox image is loaded
+                // let unit_direction = ray_in.direction.normalized();
+                // let t = 0.5 * (unit_direction.y + 1.0);
+                // Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
                 Color::BLACK
             }
         }

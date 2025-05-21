@@ -1,5 +1,5 @@
 use crate::color::Color;
-use crate::hittable::{Hittable, HittableList};
+use crate::hittable::{Hittable, HittableList, HitRecord};
 use crate::material::{Lambertian, Metal, Dielectric, EmissiveLight, Material};
 use crate::mesh::mesh_object::Mesh;
 use crate::objects::plane::Plane;
@@ -8,13 +8,14 @@ use crate::objects::cube::Cube;
 use crate::vec3::Vec3;
 use std::sync::Arc;
 use image::DynamicImage;
+use image::{ImageBuffer, Rgb};
 use glam::{Mat4, Quat, Vec3 as GlamVec3};
-
-
+use crate::ray::Ray;
 
 pub struct Scene {
     pub object_list: HittableList,
     pub skybox_image: Option<DynamicImage>,
+    pub skybox_hdr_image: Option<ImageBuffer<Rgb<f32>, Vec<f32>>>,
 }
 
 impl Scene {
@@ -22,6 +23,7 @@ impl Scene {
         Scene {
             object_list: HittableList::new(),
             skybox_image: None,
+            skybox_hdr_image: None,
         }
     }
 
@@ -57,12 +59,12 @@ fn load_mesh(
 pub fn init_scene() -> Scene {
     let mut scene = Scene::new();
 
-    let floor_mat = Arc::new(Lambertian::new(Color::new(0.0, 0.3, 0.3)));
+    let floor_mat = Arc::new(Lambertian::new_solid(Color::new(0.0, 0.3, 0.3)));
     let default_mirror_mat = Arc::new(Metal::new(Color::new(0.9, 0.9, 1.0), 0.02)); // Reduced fuzz from 0.9, 0.9 is very blurry
     let fuzzy_mirror_mat = Arc::new(Metal::new(Color::new(0.0, 0.9, 1.0), 0.9)); // Reduced fuzz from 0.9, 0.9 is very blurry
-    let yellow_diffuse_mat = Arc::new(Lambertian::new(Color::YELLOW));
-    let magenta_mat = Arc::new(Lambertian::new(Color::MAGENTA));
-    let red_plastic_mat = Arc::new(Lambertian::new(Color::RED));
+    let yellow_diffuse_mat = Arc::new(Lambertian::new_solid(Color::YELLOW));
+    let magenta_mat = Arc::new(Lambertian::new_solid(Color::MAGENTA));
+    let red_plastic_mat = Arc::new(Lambertian::new_solid(Color::RED));
     let grey_metal_mat = Arc::new(Metal::new(Color::GRAY, 0.0)); // Fuzz 1.0 is max blur, 0.0 for perfect mirror
     let glass_mat = Arc::new(Dielectric::new(1.5));
 
@@ -174,4 +176,10 @@ pub fn init_scene() -> Scene {
     );
 
     scene
+}
+
+impl Hittable for Scene {
+    fn hit(&self, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
+        self.object_list.hit(ray, t_min, t_max)
+    }
 }

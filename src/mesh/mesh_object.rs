@@ -142,45 +142,66 @@ impl Mesh {
         material: Arc<dyn Material>,
         object_to_world: Mat4,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        println!("[WO3_LOADER] Attempting to load .wo3 file: {}", path);
         let file = File::open(Path::new(path))?;
         let mut reader = BufReader::new(file);
 
         let num_verts = reader.read_u64::<LittleEndian>()?;
+        println!("[WO3_LOADER] Header: num_verts = {}", num_verts);
         let mut vertices_obj_space = Vec::with_capacity(num_verts as usize);
         
-        // Assuming Vertex is [float p.x, float p.y, float p.z, float n.x, ..., float uv.y]
-        // Tungsten Vertex struct: Point3f p; Normal3f n; Vec2f uv; (3+3+2 = 8 floats)
-        // We only need p for now.
-        for _ in 0..num_verts {
+        println!("[WO3_LOADER] Reading {} vertices...", num_verts);
+        for i in 0..num_verts {
             let px = reader.read_f32::<LittleEndian>()?;
             let py = reader.read_f32::<LittleEndian>()?;
             let pz = reader.read_f32::<LittleEndian>()?;
             vertices_obj_space.push(CrateVec3::new(px, py, pz));
             
-            // Skip normal (3 floats) and UV (2 floats)
             reader.read_f32::<LittleEndian>()?; // nx
             reader.read_f32::<LittleEndian>()?; // ny
             reader.read_f32::<LittleEndian>()?; // nz
             reader.read_f32::<LittleEndian>()?; // u
             reader.read_f32::<LittleEndian>()?; // v
+
+            if i < 5 { 
+                println!("[WO3_LOADER] Vertex {}: ({}, {}, {})", i, px, py, pz);
+            }
+        }
+        if num_verts == 0 {
+            println!("[WO3_LOADER] Warning: No vertices found in .wo3 file header.");
+        } else {
+            println!("[WO3_LOADER] Finished reading {} vertices.", vertices_obj_space.len());
         }
 
         let num_tris = reader.read_u64::<LittleEndian>()?;
+        println!("[WO3_LOADER] Header: num_tris = {}", num_tris);
         let mut triangles_obj_space = Vec::with_capacity(num_tris as usize);
 
-        // TriangleI is uint32_t v[3];
-        for _ in 0..num_tris {
+        println!("[WO3_LOADER] Reading {} triangles...", num_tris);
+        let mut valid_triangles_count = 0;
+        let mut degenerate_triangles_count = 0;
+        let mut out_of_bounds_indices_count = 0;
+
+        for i in 0..num_tris {
             let v0_idx = reader.read_u32::<LittleEndian>()? as usize;
             let v1_idx = reader.read_u32::<LittleEndian>()? as usize;
             let v2_idx = reader.read_u32::<LittleEndian>()? as usize;
 
+            if i < 5 { 
+                println!("[WO3_LOADER] Triangle indices {}: ({}, {}, {})", i, v0_idx, v1_idx, v2_idx);
+            }
+
+            // Original logic: Skip if any index is out of bounds
             if v0_idx >= vertices_obj_space.len() || 
                v1_idx >= vertices_obj_space.len() || 
                v2_idx >= vertices_obj_space.len() {
-                eprintln!(
-                    "Warning: Vertex index out of bounds (max={}) in .wo3 file '{}'. Indices: ({}, {}, {}). Skipping triangle.",
-                    vertices_obj_space.len().saturating_sub(1), path, v0_idx, v1_idx, v2_idx
-                );
+                out_of_bounds_indices_count += 1;
+                if out_of_bounds_indices_count <= 5 { 
+                    eprintln!(
+                        "[WO3_LOADER] Warning: Vertex index out of bounds (max={}) in .wo3 file '{}'. Indices: ({}, {}, {}). Skipping triangle.",
+                        vertices_obj_space.len().saturating_sub(1), path, v0_idx, v1_idx, v2_idx
+                    );
+                }
                 continue;
             }
 
@@ -191,17 +212,32 @@ impl Mesh {
                 material.clone(),
             );
 
-            // Check for degenerate triangles
             if (triangle.v1 - triangle.v0)
                 .cross(triangle.v2 - triangle.v0)
                 .length_squared()
                 < EPSILON * EPSILON
             {
+                degenerate_triangles_count += 1;
+                 if degenerate_triangles_count <= 5 { 
+                    eprintln!("[WO3_LOADER] Warning: Degenerate triangle {} with indices ({}, {}, {}). Vertices: {:?}, {:?}, {:?}. Skipping.", 
+                        i, v0_idx, v1_idx, v2_idx, 
+                        vertices_obj_space[v0_idx], vertices_obj_space[v1_idx], vertices_obj_space[v2_idx]);
+                }
                 continue;
             }
             triangles_obj_space.push(triangle);
+            valid_triangles_count += 1;
         }
         
+        println!("[WO3_LOADER] Finished reading triangles. Valid: {}, Degenerate: {}, Index OOB: {}", 
+                 valid_triangles_count, degenerate_triangles_count, out_of_bounds_indices_count);
+
+        if triangles_obj_space.is_empty() {
+             eprintln!("[WO3_LOADER] Error: No valid triangles were loaded from .wo3 file '{}'.", path);
+             return Err(format!("[WO3_LOADER] No valid triangles in {}", path).into());
+        }
+        
+        println!("[WO3_LOADER] Calling Self::new_internal for '{}' with {} triangles.", path, triangles_obj_space.len());
         Self::new_internal(triangles_obj_space, object_to_world, path)
     }
 }

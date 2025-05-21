@@ -1,6 +1,8 @@
-use std::ops::{Add, Mul};
+use std::ops::{Add, Div, Mul, Sub};
 
-#[derive(Clone, Copy, Debug)]
+use serde::Deserialize;
+
+#[derive(Clone, Copy, Debug, Deserialize)]
 pub struct Color {
     pub r: f32,
     pub g: f32,
@@ -17,6 +19,22 @@ impl Color {
         self.g = self.g.clamp(0.0, 1.0);
         self.b = self.b.clamp(0.0, 1.0);
     }
+
+    pub fn lerp(self, other: Color, t: f32) -> Color {
+        Color {
+            r: self.r * (1.0 - t) + other.r * t,
+            g: self.g * (1.0 - t) + other.g * t,
+            b: self.b * (1.0 - t) + other.b * t,
+        }
+    }
+
+    pub fn splat(v: f32) -> Color {
+        Color::new(v, v, v)
+    }
+
+    pub fn sqrt(self) -> Color {
+        Color::new(self.r.sqrt(), self.g.sqrt(), self.b.sqrt())
+    }
 }
 
 impl Add for Color {
@@ -25,6 +43,14 @@ impl Add for Color {
         Color::new(self.r + other.r, self.g + other.g, self.b + other.b)
     }
 }
+
+impl Add<f32> for Color {
+    type Output = Color;
+    fn add(self, s: f32) -> Color {
+        Color::new(self.r + s, self.g + s, self.b + s)
+    }
+}
+
 impl Mul<f32> for Color {
     type Output = Color;
     fn mul(self, s: f32) -> Color {
@@ -35,6 +61,34 @@ impl Mul<Color> for Color {
     type Output = Color;
     fn mul(self, o: Color) -> Color {
         Color::new(self.r * o.r, self.g * o.g, self.b * o.b)
+    }
+}
+
+impl Sub for Color {
+    type Output = Color;
+    fn sub(self, other: Color) -> Color {
+        Color::new(self.r - other.r, self.g - other.g, self.b - other.b)
+    }
+}
+
+impl Sub<f32> for Color {
+    type Output = Color;
+    fn sub(self, s: f32) -> Color {
+        Color::new(self.r - s, self.g - s, self.b - s)
+    }
+}
+
+impl Div<f32> for Color {
+    type Output = Color;
+    fn div(self, s: f32) -> Color {
+        Color::new(self.r / s, self.g / s, self.b / s)
+    }
+}
+
+impl Div<Color> for Color {
+    type Output = Color;
+    fn div(self, o: Color) -> Color {
+        Color::new(self.r / o.r, self.g / o.g, self.b / o.b)
     }
 }
 

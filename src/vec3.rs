@@ -97,6 +97,17 @@ impl Vec3 {
             z: -self.x * sin_a + self.z * cos_a,
         }
     }
+
+    pub fn reflect(self, normal: Vec3) -> Vec3 {
+        self - normal * 2.0 * self.dot(normal)
+    }
+
+    pub fn to_world(local: Vec3, normal: Vec3) -> Vec3 {
+        let up = if normal.z.abs() < 0.999 { Vec3::new(0.0,0.0,1.0) } else { Vec3::new(0.0,1.0,0.0) };
+        let tangent = normal.cross(up).normalized();
+        let bitangent = normal.cross(tangent);
+        tangent * local.x + bitangent * local.y + normal * local.z
+    }
 }
 
 impl Add for Vec3 {
@@ -162,5 +173,11 @@ impl std::ops::Neg for Vec3 {
     type Output = Self;
     fn neg(self) -> Self {
         Self { x: -self.x, y: -self.y, z: -self.z }
+    }
+}
+
+impl Default for Vec3 {
+    fn default() -> Self {
+        Vec3::new(0.0, 0.0, 0.0)
     }
 }
