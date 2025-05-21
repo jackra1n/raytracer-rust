@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use glam::{Mat4, Vec3 as GlamVec3, Quat};
 use std::path::Path;
 use crate::hittable::Hittable;
+use std::f32::consts::PI;
 
 #[derive(Deserialize, Debug, Copy, Clone, Default)]
 pub struct Vec3Config {
@@ -545,7 +546,7 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
     for obj_conf_variant in config.objects {
         match obj_conf_variant {
             ObjectConfigVariant::Sphere { transform, radius, bsdf, power } => {
-                let sphere_material: Arc<dyn Material>;
+                let mut sphere_material: Arc<dyn Material>;
 
                 if let Some(p_val) = power {
                     let intensity = (p_val / 300.0).clamp(0.0, 50.0);
@@ -569,19 +570,37 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                             Some(ScaleConfig::Uniform(s)) => s,
                             Some(ScaleConfig::NonUniform(v_conf)) => {
                                 // Using x-component of scale as radius if non-uniform and radius field is absent
-                                // Could also average x,y,z or warn if they are different for a sphere.
                                 if (v_conf.x - v_conf.y).abs() > 1e-6 || (v_conf.x - v_conf.z).abs() > 1e-6 {
                                     eprintln!("Warning: Sphere parsed with non-uniform scale ({:?}) and no explicit radius. Using x-component for radius.", v_conf);
                                 }
                                 v_conf.x 
                             },
                             None => {
-                                // eprintln!("Warning: Sphere has no explicit radius and no scale in transform. Defaulting to radius 0.5.");
                                 1.0 // Default if no radius and no scale
                             }
                         }
                     }
                 };
+
+                if let Some(p_val) = power { // p_val is power_f32 (total flux in Watts)
+                    let radiance_val = if sphere_radius > 1e-6 { // Use a small epsilon for radius check
+                        p_val / (4.0 * PI * PI * sphere_radius * sphere_radius)
+                    } else {
+                        eprintln!("Warning: Sphere light has zero or very small radius ({}). Emitting no light.", sphere_radius);
+                        0.0 // Avoid division by zero, effectively no light if radius is zero
+                    };
+                    
+                    let emissive_color = Color::new(radiance_val, radiance_val, radiance_val);
+                    sphere_material = Arc::new(EmissiveLight::new(emissive_color));
+                    // ---- DEBUG PRINT ----
+                    println!("[DEBUG TUNGSTEN PARSER] Sphere light: power_f32={}, radius={}, calculated_radiance_component={}, emissive_color={:?}", 
+                        p_val, 
+                        sphere_radius,
+                        radiance_val, 
+                        emissive_color
+                    );
+                    // ---- END DEBUG PRINT ----
+                }
 
                 let sphere = Sphere {
                     center: center_pos,

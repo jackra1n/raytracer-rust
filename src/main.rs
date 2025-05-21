@@ -26,26 +26,28 @@ fn main() {
     // let scene_file_path_str = "data/scene_from_rust.json";
     // let scene_file_path_str = "data/scenes/tungsten/dragon/scene.json";
     // let scene_file_path_str = "data/scenes/tungsten/volumetric-caustic/scene.json";
-    let scene_file_path_str = "data/scenes/tungsten/veach-mis/scene.json";
+    let scene_path_str = "data/scenes/tungsten/veach-mis/scene.json";
     // let scene_file_path_str = "data/scenes/mitsuba/cornell-box/scene_v3.xml";
-    println!("Attempting to load scene from: {}", scene_file_path_str);
-
-    let scene_path = Path::new(scene_file_path_str);
+    println!("Attempting to load scene from: {}", scene_path_str);
+    let scene_path = Path::new(scene_path_str);
 
     let result = match scene_path.extension().and_then(std::ffi::OsStr::to_str) {
         Some("json") => {
             println!("Detected JSON scene file.");
-            tungsten_parser::load_scene_from_json(scene_file_path_str)
+            tungsten_parser::load_scene_from_json(scene_path_str)
         }
         _ => {
-            eprintln!("Unsupported scene file type or no extension: {}", scene_file_path_str);
-            eprintln!("Please use a .json or .xml file.");
-            return;
+            panic!("Unsupported scene file extension or path error for: {}", scene_path.display());
         }
     };
 
     match result {
-        Ok((scene, camera, render_settings)) => {
+        Ok((scene, camera, mut render_settings)) => {
+            // Override max_depth for testing
+            println!("Original max_depth from scene file: {}", render_settings.max_depth);
+            render_settings.max_depth = 10; // Experiment with a higher max_depth
+            println!("Overridden max_depth for rendering: {}", render_settings.max_depth);
+
             println!(
                 "Scene loaded. Objects: {}. Image: {}x{}, Samples: {}, Max Depth: {}",
                 scene.object_list.objects.len(),
