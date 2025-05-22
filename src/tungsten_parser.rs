@@ -14,6 +14,7 @@ use glam::{Mat4, Vec3 as GlamVec3, Quat};
 use std::path::Path;
 use crate::hittable::Hittable;
 use std::f32::consts::PI;
+use crate::text_mesh;
 
 #[derive(Deserialize, Debug, Copy, Clone, Default)]
 pub struct Vec3Config {
@@ -193,6 +194,14 @@ pub enum ObjectConfigVariant {
         sample: Option<bool>,
         cap_angle: Option<f32>,
     },
+    Text {
+        text: String,
+        font_path: String,
+        font_size: f32,
+        extrusion_depth: f32,
+        transform: ObjectTransformConfig,
+        bsdf: String,
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -334,7 +343,6 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
             let material_type_config_result: Result<MaterialTypeConfig, String> = match bsdf_conf.type_str.as_str() {
                 "lambert" => {
                     if let Some(albedo_val) = &bsdf_conf.albedo {
-                        // Try to parse as AlbedoConfig directly (handles ColorConfig, f32, or CheckerTextureConfig map)
                         match serde_json::from_value::<AlbedoConfig>(albedo_val.clone()) {
                             Ok(parsed_albedo_config) => Ok(MaterialTypeConfig::Lambertian { albedo: parsed_albedo_config }),
                             Err(e) => Err(format!("Failed to parse albedo for Lambertian BSDF '{}' as Color, f32, or Checker: {}. Value: {:?}", bsdf_conf.name, e, albedo_val))
@@ -346,7 +354,6 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                 "plastic" => {
                     let mut parsed_albedo_for_plastic = ColorConfig(0.8, 0.8, 0.8); // Default albedo
                     if let Some(albedo_val) = &bsdf_conf.albedo {
-                        // Plastic albedo is expected to be simple color or float, not a texture map here.
                         match serde_json::from_value::<ColorConfig>(albedo_val.clone()) {
                             Ok(cc) => parsed_albedo_for_plastic = cc,
                             Err(_) => {
@@ -361,38 +368,28 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                     } else {
                         eprintln!("Warning: Plastic BSDF '{}' missing albedo. Using default albedo.", bsdf_conf.name);
                     }
-                    
                     let parsed_ior = bsdf_conf.ior.unwrap_or(1.5);
-
                     Ok(MaterialTypeConfig::Plastic { albedo: parsed_albedo_for_plastic, ior: parsed_ior })
                 }
                 "null" => {
-                    // For "null" BSDF, used by lights. Emission is on the primitive.
-                    // Create a placeholder; it will be overridden if the primitive is emissive.
                     Ok(MaterialTypeConfig::Lambertian{ albedo: AlbedoConfig::Solid(ColorConfig(0.0, 0.0, 0.0)) })
                 }
                 "rough_conductor" => {
-                    // Defaults
                     let mut albedo = Color::new(1.0, 1.0, 1.0);
-                    let mut roughness = 0.1; // Default if not specified in JSON
+                    let mut roughness = 0.1;
                     let mut metal_type = material::MetalType::Cu;
                     let mut distribution = material::MicrofacetDistribution::GGX;
-
                     if let Some(albedo_val) = &bsdf_conf.albedo {
-                        // Try to parse as ColorConfig or f32
                         if let Ok(cc) = serde_json::from_value::<ColorConfig>(albedo_val.clone()) {
                             albedo = cc.into();
                         } else if let Ok(gray_val) = serde_json::from_value::<f32>(albedo_val.clone()) {
                             albedo = Color::new(gray_val, gray_val, gray_val);
                         }
                     }
-                    // Parse roughness correctly from bsdf_conf.roughness
                     if let Some(r_val) = bsdf_conf.roughness {
                         roughness = r_val;
                     }
-
-                    // Parse metal type
-                    if let Some(mat_str) = bsdf_conf.material.as_ref() { // Use bsdf_conf.material directly
+                    if let Some(mat_str) = bsdf_conf.material.as_ref() {
                         metal_type = match mat_str.to_lowercase().as_str() {
                             "cu" => material::MetalType::Cu,
                             "au" => material::MetalType::Au,
@@ -402,26 +399,31 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
                             "ti" => material::MetalType::Ti,
                             "fe" => material::MetalType::Fe,
                             "pb" => material::MetalType::Pb,
-                             _ => { 
-                                eprintln!("Warning: Unknown metal type '{}' for rough_conductor, defaulting to Cu.", mat_str);
-                                material::MetalType::Cu 
-                            }
+                             _ => material::MetalType::Cu 
                         };
                     }
-                    // Parse distribution
-                    if let Some(dist_str) = bsdf_conf.distribution.as_ref() { // Use bsdf_conf.distribution directly
+                    if let Some(dist_str) = bsdf_conf.distribution.as_ref() {
                         distribution = match dist_str.to_lowercase().as_str() {
                             "ggx" => material::MicrofacetDistribution::GGX,
                             "beckmann" => material::MicrofacetDistribution::Beckmann,
-                            _ => { 
-                                eprintln!("Warning: Unknown distribution '{}' for rough_conductor, defaulting to GGX.", dist_str);
-                                material::MicrofacetDistribution::GGX 
-                            }
+                            _ => material::MicrofacetDistribution::GGX
                         };
                     }
                     Ok(MaterialTypeConfig::RoughConductor { albedo: ColorConfig(albedo.r, albedo.g, albedo.b), roughness, metal_type, distribution })
                 }
-                // TODO: Add other BSDF types like "dielectric", "metal", "phong", etc.
+                "glass" | "dielectric" => {
+                    let ior = bsdf_conf.ior.unwrap_or(1.5);
+                    Ok(MaterialTypeConfig::Glass { index_of_refraction: ior })
+                }
+                "metal" => {
+                    let albedo_val = bsdf_conf.albedo.clone().unwrap_or(serde_json::json!([0.8, 0.8, 0.8]));
+                    let color_conf: ColorConfig = serde_json::from_value(albedo_val).map_err(|e| e.to_string())?;
+                    let fuzz = bsdf_conf.roughness.unwrap_or(0.0);
+                    Ok(MaterialTypeConfig::Metal { albedo: color_conf, fuzz })
+                }
+                "light" => { // For EmissiveLight, typically handled by primitive's 'power'
+                    Ok(MaterialTypeConfig::Light {})
+                }
                 unsupported_type => {
                     eprintln!("Warning: Unsupported BSDF type '{}' for BSDF named '{}'.", unsupported_type, bsdf_conf.name);
                     Err(format!("Unsupported BSDF type: {}", unsupported_type))
@@ -796,6 +798,48 @@ pub fn load_scene_from_json(json_path: &str) -> Result<(Scene, Camera, RenderSet
 
                 if !used_for_skybox {
                      eprintln!("Warning: 'infinite_sphere_cap' object type is recognized but not yet implemented for rendering as a geometric object.");
+                }
+            }
+            ObjectConfigVariant::Text { text, font_path, font_size, extrusion_depth, transform, bsdf } => {
+                let text_material = parsed_bsdfs_map.get(&bsdf)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        eprintln!("Warning: BSDF '{}' not found for Text object '{}'. Using default material.", bsdf, text);
+                        Arc::new(Lambertian::new_solid(Color::MAGENTA)) // Default fallback
+                    });
+
+                let absolute_font_path = scene_dir.join(&font_path);
+
+                let translation_vec = transform.position.map_or(GlamVec3::ZERO, |p| GlamVec3::new(p.x, p.y, p.z));
+                let scale_vec = match transform.scale {
+                    Some(ScaleConfig::Uniform(s)) => GlamVec3::splat(s),
+                    Some(ScaleConfig::NonUniform(v_conf)) => GlamVec3::new(v_conf.x, v_conf.y, v_conf.z),
+                    None => GlamVec3::ONE,
+                };
+                let rotation_angles_deg_json = transform.rotation.map_or(GlamVec3::ZERO, |r| GlamVec3::new(r.x, r.y, r.z));
+                let rotation_quat = Quat::from_euler(
+                    glam::EulerRot::YXZ, 
+                    rotation_angles_deg_json.y.to_radians(),
+                    rotation_angles_deg_json.x.to_radians(),
+                    rotation_angles_deg_json.z.to_radians()
+                );
+                let object_to_world_matrix = Mat4::from_scale_rotation_translation(scale_vec, rotation_quat, translation_vec);
+
+                match text_mesh::generate_text_mesh(
+                    &text,
+                    absolute_font_path.to_str().unwrap_or_default(),
+                    font_size,
+                    extrusion_depth,
+                    text_material.clone(), // Pass the resolved material
+                    object_to_world_matrix, // Pass the calculated transformation
+                ) {
+                    Ok(text_mesh_object) => {
+                        scene.add_object(Box::new(text_mesh_object));
+                        println!("Successfully generated and added text mesh for: '{}'", text);
+                    }
+                    Err(e) => {
+                        eprintln!("Error generating text mesh for '{}': {:?}. Font path: {:?}", text, e, absolute_font_path);
+                    }
                 }
             }
         }

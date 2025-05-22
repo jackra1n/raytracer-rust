@@ -240,6 +240,46 @@ impl Mesh {
         println!("[WO3_LOADER] Calling Self::new_internal for '{}' with {} triangles.", path, triangles_obj_space.len());
         Self::new_internal(triangles_obj_space, object_to_world, path)
     }
+
+    pub fn from_triangles_and_transform(
+        triangles: Vec<Triangle>,
+        object_to_world: Mat4,
+        name_for_debug: &str, 
+        _material_for_mesh: Arc<dyn Material> // This material might not be used if triangles have their own
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        if triangles.is_empty() {
+            return Err(format!(
+                "No triangles provided for mesh '{}'",
+                name_for_debug
+            )
+            .into());
+        }
+
+        println!(
+            "Building BVH for {} pre-defined triangles for '{}'...",
+            triangles.len(),
+            name_for_debug
+        );
+        let start_time = std::time::Instant::now();
+        // Create a mutable copy of triangles for BVHNode::new if it expects &mut Vec<Triangle>
+        // Or if it takes &Vec<Triangle> and &mut Vec<usize> for indices, that's fine.
+        // Based on your existing BVHNode::new call: `let bvh = BVHNode::new(&triangles, &mut indices, 0);`
+        // it seems it takes `&Vec<Triangle>` and `&mut Vec<usize>` for indices.
+        let mut indices: Vec<usize> = (0..triangles.len()).collect();
+        let bvh = BVHNode::new(&triangles, &mut indices, 0);
+        let build_time = start_time.elapsed().as_millis();
+        println!("BVH built in {}ms for '{}'", build_time, name_for_debug);
+        
+        let world_to_object = object_to_world.inverse();
+
+        Ok(Mesh {
+            triangles,
+            bvh,
+            object_to_world,
+            world_to_object,
+            // material: material_for_mesh, // If Mesh struct itself needs a top-level material
+        })
+    }
 }
 
 impl Hittable for Mesh {
