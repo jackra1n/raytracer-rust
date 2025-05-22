@@ -9,6 +9,7 @@ mod objects;
 mod mesh;
 mod renderer;
 mod tungsten_parser;
+mod text_mesh;
 
 use minifb::{Key, Window, WindowOptions};
 use indicatif::HumanDuration;
@@ -26,8 +27,9 @@ fn main() {
     // let scene_file_path_str = "data/scene_from_rust.json";
     // let scene_file_path_str = "data/scenes/tungsten/dragon/scene.json";
     // let scene_file_path_str = "data/scenes/tungsten/volumetric-caustic/scene.json";
-    let scene_path_str = "data/scenes/tungsten/veach-mis/scene.json";
-    // let scene_file_path_str = "data/scenes/mitsuba/cornell-box/scene_v3.xml";
+    // let scene_path_str = "data/scenes/tungsten/veach-mis/scene.json";
+    // let scene_path_str = "data/scene_from_rust.json";
+    let scene_path_str = "data/semesterbild.json";
     println!("Attempting to load scene from: {}", scene_path_str);
     let scene_path = Path::new(scene_path_str);
 
