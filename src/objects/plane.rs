@@ -40,7 +40,11 @@ impl Hittable for Plane {
 
         let outward_normal = self.normal;
         let front_face = ray.direction.dot(outward_normal) < 0.0;
-        let hit_record_normal = if front_face { outward_normal } else { -outward_normal };
+        let hit_record_normal = if front_face {
+            outward_normal
+        } else {
+            -outward_normal
+        };
 
         Some(HitRecord {
             t,

@@ -1,18 +1,18 @@
 use crate::hittable::{HitRecord, Hittable};
 use crate::material::Material;
 use crate::ray::Ray;
-use crate::vec3::Vec3;
-use std::sync::Arc;
 use crate::renderer::EPSILON; // For comparisons
-use glam::{Mat4, Vec3A as GlamVec3A}; // Using Vec3A for SIMD alignment if Mat4 expects it
+use crate::vec3::Vec3;
+use glam::{Mat4, Vec3A as GlamVec3A};
+use std::sync::Arc; // Using Vec3A for SIMD alignment if Mat4 expects it
 
 #[derive(Clone)]
 pub struct Quad {
-    base: Vec3,      // One corner of the quad (world space, e.g. transformed local (-0.5, 0, -0.5))
-    edge0: Vec3,     // Vector along one edge from base (world space)
-    edge1: Vec3,     // Vector along the other edge from base (world space)
-    normal: Vec3,    // Unit normal vector of the quad's plane
-    d: f32,          // Constant in plane equation normal.dot(P) - d = 0
+    base: Vec3, // One corner of the quad (world space, e.g. transformed local (-0.5, 0, -0.5))
+    edge0: Vec3, // Vector along one edge from base (world space)
+    edge1: Vec3, // Vector along the other edge from base (world space)
+    normal: Vec3, // Unit normal vector of the quad's plane
+    d: f32,     // Constant in plane equation normal.dot(P) - d = 0
     material: Arc<dyn Material>,
     inv_edge0_len_sq: f32,
     inv_edge1_len_sq: f32,
@@ -29,8 +29,8 @@ impl Quad {
         // B: ( 0.5, 0.0, -0.5) - base + local_edge0
         // D: (-0.5, 0.0,  0.5) - base + local_edge1
         let v_a_local = GlamVec3A::new(-0.5, 0.0, -0.5);
-        let v_b_local = GlamVec3A::new( 0.5, 0.0, -0.5);
-        let v_d_local = GlamVec3A::new(-0.5, 0.0,  0.5);
+        let v_b_local = GlamVec3A::new(0.5, 0.0, -0.5);
+        let v_d_local = GlamVec3A::new(-0.5, 0.0, 0.5);
 
         // Transform points to world space
         let base_w_glam = (transform * v_a_local.extend(1.0)).truncate();
@@ -43,7 +43,7 @@ impl Quad {
 
         let edge0 = p_b_w - base;
         let edge1 = p_d_w - base;
-        
+
         // Normal: Tungsten uses edge1.cross(edge0). Our cross product: X.cross(Z) = -Y.
         // If local edge0 is +X (0.5 - (-0.5) = 1,0,0) and local edge1 is +Z (0,0,1),
         // then transformed edge0 and edge1.
@@ -64,8 +64,16 @@ impl Quad {
             normal,
             d,
             material,
-            inv_edge0_len_sq: if edge0_len_sq > EPSILON { 1.0 / edge0_len_sq } else { 0.0 },
-            inv_edge1_len_sq: if edge1_len_sq > EPSILON { 1.0 / edge1_len_sq } else { 0.0 },
+            inv_edge0_len_sq: if edge0_len_sq > EPSILON {
+                1.0 / edge0_len_sq
+            } else {
+                0.0
+            },
+            inv_edge1_len_sq: if edge1_len_sq > EPSILON {
+                1.0 / edge1_len_sq
+            } else {
+                0.0
+            },
             // area,
         }
     }
@@ -94,15 +102,19 @@ impl Hittable for Quad {
         // l1 = (v_hit_to_base . edge1) / edge1.length_squared()
         let l0 = v_hit_to_base.dot(self.edge0) * self.inv_edge0_len_sq;
         let l1 = v_hit_to_base.dot(self.edge1) * self.inv_edge1_len_sq;
-        
+
         // Check if hit is within the parallelogram defined by base, edge0, edge1
         if !(l0 >= -EPSILON && l0 <= 1.0 + EPSILON && l1 >= -EPSILON && l1 <= 1.0 + EPSILON) {
             // Using EPSILON for float comparisons at boundaries
             return None;
         }
-        
+
         let front_face = ray.direction.dot(self.normal) < 0.0; // Standard definition
-        let hit_normal = if front_face { self.normal } else { -self.normal };
+        let hit_normal = if front_face {
+            self.normal
+        } else {
+            -self.normal
+        };
 
         // UV coordinates (optional, but good for texturing/emission)
         // let u = l0;
@@ -114,8 +126,8 @@ impl Hittable for Quad {
             normal: hit_normal,
             material: self.material.clone(),
             front_face,
-            // u, 
+            // u,
             // v,
         })
     }
-} 
+}

@@ -1,24 +1,27 @@
 use crate::color::Color;
-use crate::ray::Ray;
 use crate::hittable::HitRecord;
+use crate::ray::Ray;
 use crate::vec3::Vec3;
 use rand::{Rng, RngCore};
-use std::sync::Arc;
-use std::f32::consts::PI;
 use serde::Deserialize;
-
+use std::f32::consts::PI;
+use std::sync::Arc;
 
 const EPSILON: f32 = 1e-4;
 
 pub trait Material: Send + Sync {
-    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)>;
+    fn scatter(
+        &self,
+        ray_in: &Ray,
+        hit_record: &HitRecord,
+        rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)>;
     fn emitted(&self, _u: f32, _v: f32, _p: &Vec3) -> Color {
         Color::BLACK
     }
 }
 
-// Enum to represent the type of albedo for Lambertian materials
-#[derive(Clone)] // CheckerTexture is Clone, Color is Copy (implicitly Clone)
+#[derive(Clone)]
 pub enum AlbedoKind {
     Solid(Color),
     Checked(Arc<CheckerTexture>),
@@ -30,16 +33,26 @@ pub struct Lambertian {
 
 impl Lambertian {
     pub fn new_solid(albedo: Color) -> Self {
-        Self { albedo_kind: AlbedoKind::Solid(albedo) }
+        Self {
+            albedo_kind: AlbedoKind::Solid(albedo),
+        }
     }
     pub fn new_checker(texture: Arc<CheckerTexture>) -> Self {
-        Self { albedo_kind: AlbedoKind::Checked(texture) }
+        Self {
+            albedo_kind: AlbedoKind::Checked(texture),
+        }
     }
 }
 
 impl Material for Lambertian {
-    fn scatter(&self, _ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
-        let mut scatter_direction = hit_record.normal + Vec3::random_in_unit_sphere(rng).normalized();
+    fn scatter(
+        &self,
+        _ray_in: &Ray,
+        hit_record: &HitRecord,
+        rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)> {
+        let mut scatter_direction =
+            hit_record.normal + Vec3::random_in_unit_sphere(rng).normalized();
 
         if scatter_direction.near_zero() {
             scatter_direction = hit_record.normal;
@@ -47,7 +60,7 @@ impl Material for Lambertian {
 
         let scattered_origin = hit_record.position + hit_record.normal * EPSILON;
         let scattered_ray = Ray::new(scattered_origin, scatter_direction.normalized());
-        
+
         let surface_albedo = match &self.albedo_kind {
             AlbedoKind::Solid(color) => *color,
             AlbedoKind::Checked(checker_texture) => checker_texture.value(&hit_record.position),
@@ -63,13 +76,23 @@ pub struct Metal {
 }
 
 impl Metal {
-    pub fn new(albedo: Color, fuzz: f32) -> Self { Self { albedo, fuzz: fuzz.clamp(0.0, 1.0) } }
+    pub fn new(albedo: Color, fuzz: f32) -> Self {
+        Self {
+            albedo,
+            fuzz: fuzz.clamp(0.0, 1.0),
+        }
+    }
 }
 
 impl Material for Metal {
-    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
+    fn scatter(
+        &self,
+        ray_in: &Ray,
+        hit_record: &HitRecord,
+        rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)> {
         let reflected_direction = reflect(ray_in.direction.normalized(), hit_record.normal);
-        
+
         let fuzzed_direction = if self.fuzz > 0.0 {
             reflected_direction + Vec3::random_in_unit_sphere(rng) * self.fuzz
         } else {
@@ -91,11 +114,18 @@ pub struct Dielectric {
 }
 
 impl Dielectric {
-    pub fn new(refractive_index: f32) -> Self { Self { refractive_index } }
+    pub fn new(refractive_index: f32) -> Self {
+        Self { refractive_index }
+    }
 }
 
 impl Material for Dielectric {
-    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
+    fn scatter(
+        &self,
+        ray_in: &Ray,
+        hit_record: &HitRecord,
+        rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)> {
         let attenuation = Color::WHITE;
 
         let refraction_ratio = if hit_record.front_face {
@@ -105,7 +135,7 @@ impl Material for Dielectric {
         };
 
         let unit_direction = ray_in.direction.normalized();
-        
+
         let cos_theta = (-unit_direction).dot(hit_record.normal).min(1.0);
         let sin_theta_squared = 1.0 - cos_theta * cos_theta;
 
@@ -118,13 +148,13 @@ impl Material for Dielectric {
             scatter_direction = reflect(unit_direction, hit_record.normal);
         } else {
             scatter_direction = refract(unit_direction, hit_record.normal, refraction_ratio)
-                                .expect("Refraction failed unexpectedly after check");
+                .expect("Refraction failed unexpectedly after check");
         }
-        
+
         let scattered_origin = if scatter_direction.dot(hit_record.normal) > 0.0 {
-             hit_record.position + hit_record.normal * EPSILON 
+            hit_record.position + hit_record.normal * EPSILON
         } else {
-             hit_record.position - hit_record.normal * EPSILON 
+            hit_record.position - hit_record.normal * EPSILON
         };
 
         let scattered_ray = Ray::new(scattered_origin, scatter_direction.normalized());
@@ -136,17 +166,23 @@ impl Material for Dielectric {
     }
 }
 
-
 pub struct EmissiveLight {
     pub color: Color,
 }
 
 impl EmissiveLight {
-    pub fn new(color: Color) -> Self { Self { color } }
+    pub fn new(color: Color) -> Self {
+        Self { color }
+    }
 }
 
 impl Material for EmissiveLight {
-    fn scatter(&self, _ray_in: &Ray, _hit_record: &HitRecord, _rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
+    fn scatter(
+        &self,
+        _ray_in: &Ray,
+        _hit_record: &HitRecord,
+        _rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)> {
         None
     }
 
@@ -156,14 +192,16 @@ impl Material for EmissiveLight {
 }
 
 fn reflect(v_in: Vec3, n_reflect: Vec3) -> Vec3 {
-    // ---- NaN Check for reflect inputs ----
     if v_in.x.is_nan() || v_in.y.is_nan() || v_in.z.is_nan() {
-        return Vec3::new(f32::NAN, f32::NAN, f32::NAN); 
+        return Vec3::new(f32::NAN, f32::NAN, f32::NAN);
     }
-    if n_reflect.x.is_nan() || n_reflect.y.is_nan() || n_reflect.z.is_nan() || (n_reflect.x == 0.0 && n_reflect.y == 0.0 && n_reflect.z == 0.0) {
-        return Vec3::new(f32::NAN, f32::NAN, f32::NAN); 
+    if n_reflect.x.is_nan()
+        || n_reflect.y.is_nan()
+        || n_reflect.z.is_nan()
+        || (n_reflect.x == 0.0 && n_reflect.y == 0.0 && n_reflect.z == 0.0)
+    {
+        return Vec3::new(f32::NAN, f32::NAN, f32::NAN);
     }
-    // ---- END NaN Check ----
     v_in - n_reflect * 2.0 * v_in.dot(n_reflect)
 }
 
@@ -188,7 +226,6 @@ fn schlick_reflectance(cosine: f32, ref_idx_ratio: f32) -> f32 {
     r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
 }
 
-// New Plastic Material
 #[derive(Clone)]
 pub struct PlasticMaterial {
     pub albedo: Color,
@@ -208,8 +245,13 @@ fn schlick(cosine: f32, ref_idx: f32) -> f32 {
 }
 
 impl Material for PlasticMaterial {
-    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
-        let reflected_color = Color::new(0.9, 0.9, 0.9); // Color of the reflection, can be white or tinted by albedo
+    fn scatter(
+        &self,
+        ray_in: &Ray,
+        hit_record: &HitRecord,
+        rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)> {
+        let reflected_color = Color::new(0.9, 0.9, 0.9); // color of the reflection, can be white or tinted by albedo
 
         let outward_normal;
         let ni_over_nt;
@@ -227,19 +269,22 @@ impl Material for PlasticMaterial {
 
         let reflect_prob = schlick(cosine, self.ior);
 
-        if rng.gen::<f32>() < reflect_prob {
-            // Specular reflection (like Metal with fuzz 0)
+        if rng.random::<f32>() < reflect_prob {
+            // specular reflection (like metal with fuzz 0)
             let reflected_dir = ray_in.direction.reflect(hit_record.normal).normalized();
-            let scattered_origin = hit_record.position + hit_record.normal * crate::renderer::EPSILON;
+            let scattered_origin =
+                hit_record.position + hit_record.normal * crate::renderer::EPSILON;
             let scattered_ray = Ray::new(scattered_origin, reflected_dir);
             Some((scattered_ray, reflected_color))
         } else {
-            // Diffuse scatter (like Lambertian)
-            let mut scatter_direction = hit_record.normal + Vec3::random_in_unit_sphere(rng).normalized();
+            // diffuse scatter (like lambertian)
+            let mut scatter_direction =
+                hit_record.normal + Vec3::random_in_unit_sphere(rng).normalized();
             if scatter_direction.near_zero() {
                 scatter_direction = hit_record.normal;
             }
-            let scattered_origin = hit_record.position + hit_record.normal * crate::renderer::EPSILON;
+            let scattered_origin =
+                hit_record.position + hit_record.normal * crate::renderer::EPSILON;
             let scattered_ray = Ray::new(scattered_origin, scatter_direction.normalized());
             Some((scattered_ray, self.albedo))
         }
@@ -250,21 +295,23 @@ impl Material for PlasticMaterial {
     }
 }
 
-// Texture definitions
 #[derive(Clone, Debug)]
 pub struct CheckerTexture {
     pub on_color: Color,
     pub off_color: Color,
-    pub inv_scale: f32, // Renamed from scale to inv_scale for typical use (e.g. 1.0/10.0 for checkers of size 10)
+    pub inv_scale: f32,
 }
 
 impl CheckerTexture {
     pub fn new(on_color: Color, off_color: Color, scale: f32) -> Self {
         let inv_scale = if scale.abs() < 1e-6 { 1.0 } else { 1.0 / scale };
-        Self { on_color, off_color, inv_scale }
+        Self {
+            on_color,
+            off_color,
+            inv_scale,
+        }
     }
 
-    // Returns the color of the checker pattern at the given 3D point.
     pub fn value(&self, p: &Vec3) -> Color {
         let x_check = (p.x * self.inv_scale).floor() as i32;
         let y_check = (p.y * self.inv_scale).floor() as i32;
@@ -277,8 +324,6 @@ impl CheckerTexture {
         }
     }
 }
-
-// --- Microfacet RoughConductor Material ---
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 pub enum MetalType {
@@ -295,16 +340,39 @@ pub enum MetalType {
 
 impl MetalType {
     pub fn ior_k(&self) -> (Color, Color) {
-        // Values from https://refractiveindex.info/ (at ~0.65um)
         match self {
-            MetalType::Cu => (Color::new(0.200, 1.090, 1.420), Color::new(3.910, 2.570, 2.300)),
-            MetalType::Au => (Color::new(0.170, 0.350, 1.500), Color::new(3.140, 2.300, 1.920)),
-            MetalType::Ag => (Color::new(0.155, 0.145, 0.135), Color::new(3.910, 2.610, 2.370)),
-            MetalType::Al => (Color::new(1.360, 0.965, 0.620), Color::new(7.570, 6.690, 5.440)),
-            MetalType::Ni => (Color::new(1.920, 1.920, 1.920), Color::new(3.670, 3.670, 3.670)),
-            MetalType::Ti => (Color::new(2.740, 2.740, 2.740), Color::new(3.170, 3.170, 3.170)),
-            MetalType::Fe => (Color::new(2.870, 2.870, 2.870), Color::new(3.140, 3.140, 3.140)),
-            MetalType::Pb => (Color::new(1.910, 1.910, 1.910), Color::new(3.180, 3.180, 3.180)),
+            MetalType::Cu => (
+                Color::new(0.200, 1.090, 1.420),
+                Color::new(3.910, 2.570, 2.300),
+            ),
+            MetalType::Au => (
+                Color::new(0.170, 0.350, 1.500),
+                Color::new(3.140, 2.300, 1.920),
+            ),
+            MetalType::Ag => (
+                Color::new(0.155, 0.145, 0.135),
+                Color::new(3.910, 2.610, 2.370),
+            ),
+            MetalType::Al => (
+                Color::new(1.360, 0.965, 0.620),
+                Color::new(7.570, 6.690, 5.440),
+            ),
+            MetalType::Ni => (
+                Color::new(1.920, 1.920, 1.920),
+                Color::new(3.670, 3.670, 3.670),
+            ),
+            MetalType::Ti => (
+                Color::new(2.740, 2.740, 2.740),
+                Color::new(3.170, 3.170, 3.170),
+            ),
+            MetalType::Fe => (
+                Color::new(2.870, 2.870, 2.870),
+                Color::new(3.140, 3.140, 3.140),
+            ),
+            MetalType::Pb => (
+                Color::new(1.910, 1.910, 1.910),
+                Color::new(3.180, 3.180, 3.180),
+            ),
             MetalType::Custom(c) => (*c, Color::new(1.0, 1.0, 1.0)),
         }
     }
@@ -324,13 +392,23 @@ pub struct RoughConductor {
 }
 
 impl RoughConductor {
-    pub fn new(albedo: Color, roughness: f32, metal_type: MetalType, distribution: MicrofacetDistribution) -> Self {
-        Self { albedo, roughness: roughness.max(0.01), metal_type, distribution }
+    pub fn new(
+        albedo: Color,
+        roughness: f32,
+        metal_type: MetalType,
+        distribution: MicrofacetDistribution,
+    ) -> Self {
+        Self {
+            albedo,
+            roughness: roughness.max(0.01),
+            metal_type,
+            distribution,
+        }
     }
 }
 
 fn fresnel_conductor(cos_theta: f32, eta: Color, k: Color) -> Color {
-    // Schlick-like approximation for conductors
+    // schlick-like approximation for conductors
     let cos_theta = cos_theta.clamp(0.0, 1.0);
     let cos2 = Color::splat(cos_theta * cos_theta);
     let sin2 = Color::splat(1.0) - cos2;
@@ -363,22 +441,22 @@ fn beckmann_d(roughness: f32, n_dot_h: f32) -> f32 {
     (-((n_dot_h2 - 1.0) / (a2 * n_dot_h2 + 1e-7))).exp() / (PI * a2 * n_dot_h2 + 1e-7)
 }
 
-// Replace with a more standard Smith G1 formulation for GGX
+// replace with a more standard smith G1 formulation for GGX
 fn ggx_g1(n_dot_x: f32, roughness: f32) -> f32 {
-    if n_dot_x <= 0.0 { return 0.0; }
+    if n_dot_x <= 0.0 {
+        return 0.0;
+    }
     let a = roughness * roughness; // alpha_sq
-    // Walter et al. 2007, "Microfacet Models for Refraction through Rough Surfaces"
-    // Or, Karis 2013, "Real Shading in Unreal Engine 4"
-    // k = (roughness + 1)^2 / 8  (for Schlick-GGX)
-    // Or k = roughness^2 / 2 (alpha_sq / 2)
     let k = a / 2.0;
     let denom = n_dot_x * (1.0 - k) + k;
-    if denom < EPSILON { return 1.0; } // Avoid division by zero, effectively G1=1 if denom is tiny
+    if denom < EPSILON {
+        return 1.0;
+    } // avoid division by zero, effectively G1=1 if denom is tiny
     n_dot_x / denom
 }
 
 fn ggx_g(roughness: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
-    // Separable Smith G term
+    // separable smith G term
     ggx_g1(n_dot_v, roughness) * ggx_g1(n_dot_l, roughness)
 }
 
@@ -396,41 +474,49 @@ fn beckmann_g(roughness: f32, n_dot_v: f32, n_dot_l: f32) -> f32 {
 }
 
 fn sample_ggx(normal: Vec3, roughness: f32, rng: &mut dyn RngCore) -> Vec3 {
-    // ---- NaN Check for sample_ggx inputs ----
-    if normal.x.is_nan() || normal.y.is_nan() || normal.z.is_nan() || (normal.x == 0.0 && normal.y == 0.0 && normal.z == 0.0) {
+    // ---- nan check for sample_ggx inputs ----
+    if normal.x.is_nan()
+        || normal.y.is_nan()
+        || normal.z.is_nan()
+        || (normal.x == 0.0 && normal.y == 0.0 && normal.z == 0.0)
+    {
         return Vec3::new(f32::NAN, f32::NAN, f32::NAN);
     }
-    // ---- END NaN Check ----
+    // ---- end nan check ----
 
     let u1 = rng.random::<f32>().max(1e-6);
     let u2 = rng.random::<f32>();
     let a = roughness * roughness;
     let theta_arg = a * a * (-u1.ln()) / (1.0 - u1);
 
-    if theta_arg.is_nan() || theta_arg.is_infinite() || theta_arg < 0.0 { 
-        return Vec3::to_world(Vec3::new(0.0,0.0,1.0), normal); 
+    if theta_arg.is_nan() || theta_arg.is_infinite() || theta_arg < 0.0 {
+        return Vec3::to_world(Vec3::new(0.0, 0.0, 1.0), normal);
     }
     let theta = theta_arg.sqrt().atan();
     let phi = 2.0 * PI * u2;
     let (sin_theta, cos_theta) = theta.sin_cos();
     let h_local = Vec3::new(sin_theta * phi.cos(), sin_theta * phi.sin(), cos_theta);
-    
+
     if h_local.x.is_nan() || h_local.y.is_nan() || h_local.z.is_nan() {
-        return Vec3::to_world(Vec3::new(0.0,0.0,1.0), normal); 
+        return Vec3::to_world(Vec3::new(0.0, 0.0, 1.0), normal);
     }
     Vec3::to_world(h_local, normal)
 }
 
 fn sample_beckmann(normal: Vec3, roughness: f32, rng: &mut dyn RngCore) -> Vec3 {
-    if normal.x.is_nan() || normal.y.is_nan() || normal.z.is_nan() || (normal.x == 0.0 && normal.y == 0.0 && normal.z == 0.0) {
+    if normal.x.is_nan()
+        || normal.y.is_nan()
+        || normal.z.is_nan()
+        || (normal.x == 0.0 && normal.y == 0.0 && normal.z == 0.0)
+    {
         return Vec3::new(f32::NAN, f32::NAN, f32::NAN);
     }
 
     let u1 = rng.random::<f32>().max(1e-6);
     let u2 = rng.random::<f32>();
-    let theta_arg = -(roughness * roughness * u1.ln()); 
-    if theta_arg.is_nan() || theta_arg.is_infinite() || theta_arg < 0.0 { 
-        return Vec3::to_world(Vec3::new(0.0,0.0,1.0), normal); 
+    let theta_arg = -(roughness * roughness * u1.ln());
+    if theta_arg.is_nan() || theta_arg.is_infinite() || theta_arg < 0.0 {
+        return Vec3::to_world(Vec3::new(0.0, 0.0, 1.0), normal);
     }
     let theta = theta_arg.sqrt().atan();
     let phi = 2.0 * PI * u2;
@@ -438,20 +524,32 @@ fn sample_beckmann(normal: Vec3, roughness: f32, rng: &mut dyn RngCore) -> Vec3 
     let h_local = Vec3::new(sin_theta * phi.cos(), sin_theta * phi.sin(), cos_theta);
 
     if h_local.x.is_nan() || h_local.y.is_nan() || h_local.z.is_nan() {
-        return Vec3::to_world(Vec3::new(0.0,0.0,1.0), normal); 
+        return Vec3::to_world(Vec3::new(0.0, 0.0, 1.0), normal);
     }
     Vec3::to_world(h_local, normal)
 }
 
 impl Material for RoughConductor {
-    fn scatter(&self, ray_in: &Ray, hit_record: &HitRecord, rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
-        if ray_in.direction.x.is_nan() || ray_in.direction.y.is_nan() || ray_in.direction.z.is_nan() {
-            return None; 
+    fn scatter(
+        &self,
+        ray_in: &Ray,
+        hit_record: &HitRecord,
+        rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)> {
+        if ray_in.direction.x.is_nan() || ray_in.direction.y.is_nan() || ray_in.direction.z.is_nan()
+        {
+            return None;
         }
-        if hit_record.normal.x.is_nan() || hit_record.normal.y.is_nan() || hit_record.normal.z.is_nan() || (hit_record.normal.x == 0.0 && hit_record.normal.y == 0.0 && hit_record.normal.z == 0.0) {
-            return None; 
+        if hit_record.normal.x.is_nan()
+            || hit_record.normal.y.is_nan()
+            || hit_record.normal.z.is_nan()
+            || (hit_record.normal.x == 0.0
+                && hit_record.normal.y == 0.0
+                && hit_record.normal.z == 0.0)
+        {
+            return None;
         }
-        
+
         let n = hit_record.normal;
         let v = -ray_in.direction.normalized();
         if v.x.is_nan() || v.y.is_nan() || v.z.is_nan() {
@@ -474,8 +572,8 @@ impl Material for RoughConductor {
             return None;
         }
 
-        if l.dot(n) <= 0.0 { 
-            return None; 
+        if l.dot(n) <= 0.0 {
+            return None;
         }
 
         let n_dot_l = n.dot(l).max(0.0);
@@ -492,10 +590,10 @@ impl Material for RoughConductor {
             MicrofacetDistribution::Beckmann => beckmann_g(rough, n_dot_v, n_dot_l),
         };
         let f = fresnel_conductor(v_dot_h, eta, k);
-        
+
         let brdf_numerator = f * g * v_dot_h;
         let brdf_denominator = n_dot_v * n_dot_h + EPSILON;
-        
+
         let color;
         if brdf_denominator > EPSILON {
             color = self.albedo * (brdf_numerator / brdf_denominator);
@@ -503,18 +601,21 @@ impl Material for RoughConductor {
             color = Color::BLACK;
         }
 
-        if color.r < EPSILON && color.g < EPSILON && color.b < EPSILON && (d*g != 0.0) { 
-        }
-        
+        if color.r < EPSILON && color.g < EPSILON && color.b < EPSILON && (d * g != 0.0) {}
+
         let scattered_origin = hit_record.position + n * EPSILON;
         let scattered_ray = Ray::new(scattered_origin, l.normalized());
         Some((scattered_ray, color))
     }
 }
 
-// Helper for world-space conversion (assumes normal is z+)
+// helper for world-space conversion (assumes normal is z+)
 pub fn to_world(local: Vec3, normal: Vec3) -> Vec3 {
-    let up = if normal.z.abs() < 0.999 { Vec3::new(0.0,0.0,1.0) } else { Vec3::new(0.0,1.0,0.0) };
+    let up = if normal.z.abs() < 0.999 {
+        Vec3::new(0.0, 0.0, 1.0)
+    } else {
+        Vec3::new(0.0, 1.0, 0.0)
+    };
     let tangent = normal.cross(up).normalized();
     let bitangent = normal.cross(tangent);
     tangent * local.x + bitangent * local.y + normal * local.z
@@ -531,11 +632,16 @@ impl NullMaterial {
 }
 
 impl Material for NullMaterial {
-    fn scatter(&self, _ray_in: &Ray, _hit_record: &HitRecord, _rng: &mut dyn RngCore) -> Option<(Ray, Color)> {
-        None // Null material does not scatter light
+    fn scatter(
+        &self,
+        _ray_in: &Ray,
+        _hit_record: &HitRecord,
+        _rng: &mut dyn RngCore,
+    ) -> Option<(Ray, Color)> {
+        None // null material does not scatter light
     }
 
     fn emitted(&self, _u: f32, _v: f32, _p: &Vec3) -> Color {
-        Color::BLACK // Null material does not emit light by default
+        Color::BLACK // null material does not emit light by default
     }
 }

@@ -2,22 +2,20 @@ mod camera;
 mod color;
 mod hittable;
 mod material;
-mod ray;
-mod scene;
-mod vec3;
-mod objects;
 mod mesh;
+mod objects;
+mod ray;
 mod renderer;
+mod scene;
 mod tungsten_parser;
-mod text_mesh;
+mod vec3;
 
-use minifb::{Key, Window, WindowOptions};
 use indicatif::HumanDuration;
-use std::time::Instant;
+use minifb::{Key, Window, WindowOptions};
 use std::path::Path;
+use std::time::Instant;
 
 use crate::renderer::{render_scene, save_image};
-use crate::tungsten_parser::RenderSettings;
 
 fn main() {
     let start_time = Instant::now();
@@ -39,16 +37,25 @@ fn main() {
             tungsten_parser::load_scene_from_json(scene_path_str)
         }
         _ => {
-            panic!("Unsupported scene file extension or path error for: {}", scene_path.display());
+            panic!(
+                "Unsupported scene file extension or path error for: {}",
+                scene_path.display()
+            );
         }
     };
 
     match result {
         Ok((scene, camera, mut render_settings)) => {
             // Override max_depth for testing
-            println!("Original max_depth from scene file: {}", render_settings.max_depth);
+            println!(
+                "Original max_depth from scene file: {}",
+                render_settings.max_depth
+            );
             render_settings.max_depth = 10; // Experiment with a higher max_depth
-            println!("Overridden max_depth for rendering: {}", render_settings.max_depth);
+            println!(
+                "Overridden max_depth for rendering: {}",
+                render_settings.max_depth
+            );
 
             println!(
                 "Scene loaded. Objects: {}. Image: {}x{}, Samples: {}, Max Depth: {}",
@@ -81,7 +88,10 @@ fn main() {
             println!("Window closed.");
         }
         Err(e) => {
-            eprintln!("Failed to load and render scene from '{}': {}", scene_path_str, e);
+            eprintln!(
+                "Failed to load and render scene from '{}': {}",
+                scene_path_str, e
+            );
             return;
         }
     }

@@ -119,7 +119,11 @@ impl BVHNode {
                     let position = ray.at(t);
                     let outward_normal = triangle.normal;
                     let front_face = ray.direction.dot(outward_normal) < 0.0;
-                    let hit_record_normal = if front_face { outward_normal } else { -outward_normal };
+                    let hit_record_normal = if front_face {
+                        outward_normal
+                    } else {
+                        -outward_normal
+                    };
 
                     let hit_data = HitRecord {
                         t,

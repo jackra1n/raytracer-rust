@@ -1,7 +1,7 @@
 use crate::renderer::EPSILON;
-use std::ops::{Add, Div, Mul, Sub};
-use rand::RngCore;
 use rand::Rng;
+use rand::RngCore;
+use std::ops::{Add, Div, Mul, Sub};
 #[derive(Clone, Copy, Debug)]
 pub struct Vec3 {
     pub x: f32,
@@ -103,7 +103,11 @@ impl Vec3 {
     }
 
     pub fn to_world(local: Vec3, normal: Vec3) -> Vec3 {
-        let up = if normal.z.abs() < 0.999 { Vec3::new(0.0,0.0,1.0) } else { Vec3::new(0.0,1.0,0.0) };
+        let up = if normal.z.abs() < 0.999 {
+            Vec3::new(0.0, 0.0, 1.0)
+        } else {
+            Vec3::new(0.0, 1.0, 0.0)
+        };
         let tangent = normal.cross(up).normalized();
         let bitangent = normal.cross(tangent);
         tangent * local.x + bitangent * local.y + normal * local.z
@@ -172,7 +176,11 @@ impl std::ops::Index<usize> for Vec3 {
 impl std::ops::Neg for Vec3 {
     type Output = Self;
     fn neg(self) -> Self {
-        Self { x: -self.x, y: -self.y, z: -self.z }
+        Self {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
     }
 }
 
