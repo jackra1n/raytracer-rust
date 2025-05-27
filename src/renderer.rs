@@ -3,7 +3,7 @@ use crate::color::{color_to_u32, Color};
 use crate::hittable::Hittable;
 use crate::ray::Ray;
 use crate::scene::Scene;
-use crate::tungsten_parser::RenderSettings;
+use crate::tungsten::parser::RenderSettings;
 
 use chrono::Local;
 use image::{ImageBuffer, Rgb};

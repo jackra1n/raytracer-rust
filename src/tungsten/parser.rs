@@ -2,6 +2,7 @@ use crate::camera::Camera;
 use crate::color::Color;
 use crate::hittable::Hittable;
 use crate::material::{self, Dielectric, EmissiveLight, Lambertian, Material, Metal, NullMaterial};
+use crate::tungsten::{CheckerTexture, MetalType, MicrofacetDistribution, PlasticMaterial, RoughConductor};
 use crate::mesh::mesh_object::Mesh;
 use crate::objects::plane::Plane;
 use crate::objects::sphere::Sphere;
@@ -118,8 +119,8 @@ pub enum MaterialTypeConfig {
     RoughConductor {
         albedo: ColorConfig,
         roughness: f32,
-        metal_type: material::MetalType,
-        distribution: material::MicrofacetDistribution,
+        metal_type: MetalType,
+        distribution: MicrofacetDistribution,
     },
 }
 
@@ -382,8 +383,8 @@ pub fn load_scene_from_json(
                 "rough_conductor" => {
                     let mut albedo = Color::new(1.0, 1.0, 1.0);
                     let mut roughness = 0.1;
-                    let mut metal_type = material::MetalType::Cu;
-                    let mut distribution = material::MicrofacetDistribution::GGX;
+                    let mut metal_type = MetalType::Cu;
+                    let mut distribution = MicrofacetDistribution::GGX;
 
                     if let Some(albedo_val) = &bsdf_conf.albedo {
                         if let Ok(cc) = serde_json::from_value::<ColorConfig>(albedo_val.clone()) {
@@ -400,27 +401,27 @@ pub fn load_scene_from_json(
 
                     if let Some(mat_str) = bsdf_conf.material.as_ref() {
                         metal_type = match mat_str.to_lowercase().as_str() {
-                            "cu" => material::MetalType::Cu,
-                            "au" => material::MetalType::Au,
-                            "ag" => material::MetalType::Ag,
-                            "al" => material::MetalType::Al,
-                            "ni" => material::MetalType::Ni,
-                            "ti" => material::MetalType::Ti,
-                            "fe" => material::MetalType::Fe,
-                            "pb" => material::MetalType::Pb,
+                            "cu" => MetalType::Cu,
+                            "au" => MetalType::Au,
+                            "ag" => MetalType::Ag,
+                            "al" => MetalType::Al,
+                            "ni" => MetalType::Ni,
+                            "ti" => MetalType::Ti,
+                            "fe" => MetalType::Fe,
+                            "pb" => MetalType::Pb,
                             _ => {
                                 eprintln!("Warning: Unknown metal type '{}' for rough_conductor, defaulting to Cu.", mat_str);
-                                material::MetalType::Cu
+                                MetalType::Cu
                             }
                         };
                     }
                     if let Some(dist_str) = bsdf_conf.distribution.as_ref() {
                         distribution = match dist_str.to_lowercase().as_str() {
-                            "ggx" => material::MicrofacetDistribution::GGX,
-                            "beckmann" => material::MicrofacetDistribution::Beckmann,
+                            "ggx" => MicrofacetDistribution::GGX,
+                            "beckmann" => MicrofacetDistribution::Beckmann,
                             _ => {
                                 eprintln!("Warning: Unknown distribution '{}' for rough_conductor, defaulting to GGX.", dist_str);
-                                material::MicrofacetDistribution::GGX
+                                MicrofacetDistribution::GGX
                             }
                         };
                     }
@@ -449,7 +450,7 @@ pub fn load_scene_from_json(
                         }
                         AlbedoConfig::Checker(tex_conf) => {
                             let scale = tex_conf.res_u.or(tex_conf.res_v).unwrap_or(10.0);
-                            let checker_tex = Arc::new(material::CheckerTexture::new(
+                            let checker_tex = Arc::new(CheckerTexture::new(
                                 tex_conf.on_color.into(),
                                 tex_conf.off_color.into(),
                                 scale,
@@ -489,14 +490,14 @@ pub fn load_scene_from_json(
                         Arc::new(EmissiveLight::new(Color::new(1.0, 1.0, 1.0)))
                     }
                     MaterialTypeConfig::Plastic { albedo, ior } => {
-                        Arc::new(material::PlasticMaterial::new(albedo.into(), ior))
+                        Arc::new(PlasticMaterial::new(albedo.into(), ior))
                     }
                     MaterialTypeConfig::RoughConductor {
                         albedo,
                         roughness,
                         metal_type,
                         distribution,
-                    } => Arc::new(material::RoughConductor::new(
+                    } => Arc::new(RoughConductor::new(
                         albedo.into(),
                         roughness,
                         metal_type,
@@ -645,7 +646,7 @@ pub fn load_scene_from_json(
                         }
                         AlbedoConfig::Checker(tex_conf) => {
                             let scale = tex_conf.res_u.or(tex_conf.res_v).unwrap_or(10.0);
-                            let checker_texture = Arc::new(material::CheckerTexture::new(
+                            let checker_texture = Arc::new(CheckerTexture::new(
                                 tex_conf.on_color.into(),
                                 tex_conf.off_color.into(),
                                 scale,
@@ -660,14 +661,14 @@ pub fn load_scene_from_json(
                         index_of_refraction,
                     } => Arc::new(Dielectric::new(index_of_refraction)),
                     MaterialTypeConfig::Plastic { albedo, ior } => {
-                        Arc::new(material::PlasticMaterial::new(albedo.into(), ior))
+                        Arc::new(PlasticMaterial::new(albedo.into(), ior))
                     }
                     MaterialTypeConfig::RoughConductor {
                         albedo,
                         roughness,
                         metal_type,
                         distribution,
-                    } => Arc::new(material::RoughConductor::new(
+                    } => Arc::new(RoughConductor::new(
                         albedo.into(),
                         roughness,
                         metal_type,
@@ -977,7 +978,7 @@ fn parse_bsdfs(
                         Ok(albedo_config) => {
                             if let AlbedoConfig::Checker(tex_conf) = albedo_config {
                                 let scale = tex_conf.res_u.or(tex_conf.res_v).unwrap_or(10.0);
-                                let checker_tex = Arc::new(material::CheckerTexture::new(
+                                let checker_tex = Arc::new(CheckerTexture::new(
                                     tex_conf.on_color.into(),
                                     tex_conf.off_color.into(),
                                     scale,
@@ -1033,17 +1034,17 @@ fn parse_bsdfs(
                     let roughness = bsdf_conf.roughness.unwrap_or(0.1);
                     let metal_str = bsdf_conf.material.as_deref().unwrap_or("cu").to_lowercase();
                     let metal_type = match metal_str.as_str() {
-                        "cu" => material::MetalType::Cu,
-                        "au" => material::MetalType::Au,
-                        "ag" => material::MetalType::Ag,
-                        "al" => material::MetalType::Al,
-                        "ni" => material::MetalType::Ni,
-                        "ti" => material::MetalType::Ti,
-                        "fe" => material::MetalType::Fe,
-                        "pb" => material::MetalType::Pb,
+                        "cu" => MetalType::Cu,
+                        "au" => MetalType::Au,
+                        "ag" => MetalType::Ag,
+                        "al" => MetalType::Al,
+                        "ni" => MetalType::Ni,
+                        "ti" => MetalType::Ti,
+                        "fe" => MetalType::Fe,
+                        "pb" => MetalType::Pb,
                         _ => {
                             eprintln!("Warning: Unknown metal type '{}' for rough_conductor, defaulting to Cu.", metal_str);
-                            material::MetalType::Cu
+                            MetalType::Cu
                         }
                     };
                     let dist_str = bsdf_conf
@@ -1052,14 +1053,14 @@ fn parse_bsdfs(
                         .unwrap_or("ggx")
                         .to_lowercase();
                     let distribution = match dist_str.as_str() {
-                        "ggx" => material::MicrofacetDistribution::GGX,
-                        "beckmann" => material::MicrofacetDistribution::Beckmann,
+                        "ggx" => MicrofacetDistribution::GGX,
+                        "beckmann" => MicrofacetDistribution::Beckmann,
                         _ => {
                             eprintln!("Warning: Unknown distribution '{}' for rough_conductor, defaulting to GGX.", dist_str);
-                            material::MicrofacetDistribution::GGX
+                            MicrofacetDistribution::GGX
                         }
                     };
-                    Ok(Arc::new(material::RoughConductor::new(
+                    Ok(Arc::new(RoughConductor::new(
                         albedo_color,
                         roughness,
                         metal_type,

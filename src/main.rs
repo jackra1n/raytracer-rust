@@ -7,7 +7,7 @@ mod objects;
 mod ray;
 mod renderer;
 mod scene;
-mod tungsten_parser;
+mod tungsten;
 mod vec3;
 
 use indicatif::HumanDuration;
@@ -16,6 +16,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::renderer::{render_scene, save_image};
+use crate::tungsten::load_scene_from_json;
 
 fn main() {
     let start_time = Instant::now();
@@ -34,7 +35,7 @@ fn main() {
     let result = match scene_path.extension().and_then(std::ffi::OsStr::to_str) {
         Some("json") => {
             println!("Detected JSON scene file.");
-            tungsten_parser::load_scene_from_json(scene_path_str)
+            load_scene_from_json(scene_path_str)
         }
         _ => {
             panic!(
