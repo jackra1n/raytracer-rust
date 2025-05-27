@@ -309,7 +309,9 @@ impl Hittable for Mesh {
             let normal_world =
                 CrateVec3::new(normal_world_h.x, normal_world_h.y, normal_world_h.z).normalized();
 
-            let t_world = (pos_world - ray_world.origin).dot(ray_world.direction);
+            let ray_dir_obj_length = ray_direction_obj.length();
+            let ray_dir_world_length = ray_world.direction.length();
+            let t_world = hit_rec_obj.t * ray_dir_obj_length / ray_dir_world_length;
 
             if t_world < t_min_world || t_world > t_max_world {
                 return None;
