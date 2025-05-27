@@ -143,8 +143,10 @@ impl Material for Dielectric {
         let scatter_direction: Vec3 = if cannot_refract || reflectance > rng.random::<f32>() {
             reflect(unit_direction, hit_record.normal)
         } else {
-            refract(unit_direction, hit_record.normal, refraction_ratio)
-                .expect("Refraction failed unexpectedly after check")
+            match refract(unit_direction, hit_record.normal, refraction_ratio) {
+                Some(refracted) => refracted,
+                None => reflect(unit_direction, hit_record.normal),
+            }
         };
 
         let scattered_origin = if scatter_direction.dot(hit_record.normal) > 0.0 {

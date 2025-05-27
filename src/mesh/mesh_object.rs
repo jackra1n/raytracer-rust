@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
+use crate::acceleration::BVHNode;
 use crate::hittable::{HitRecord, Hittable};
 use crate::material::Material;
-use crate::acceleration::BVHNode;
 use crate::mesh::triangle::Triangle;
 use crate::ray::Ray;
 use crate::renderer::EPSILON;

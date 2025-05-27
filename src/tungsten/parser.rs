@@ -362,7 +362,7 @@ pub fn load_scene_from_json(
                     Ok(MaterialTypeConfig::Glass {
                         index_of_refraction: ior,
                     })
-                },
+                }
                 "rough_conductor" => {
                     let mut albedo = Color::new(1.0, 1.0, 1.0);
                     let mut roughness = 0.1;

@@ -138,43 +138,43 @@
           "bsdf": "MagentaDiffuse"
       },
       {
+          "type": "mesh",
+          "file": "../models/amogus/obj/sus.obj",
+          "bsdf": "RedPlastic",
+          "smooth": true,
+          "backface_culling": false,
+          "recompute_normals": false,
           "transform": {
               "position": [0.0, -100.0, 200.0],
               "scale": 3.0,
               "rotation": [0.0, 180.0, 0.0]
-          },
-          "type": "mesh",
-          "file": "models/amogus/obj/sus.obj",
-          "bsdf": "RedPlastic",
-          "smooth": true,
-          "backface_culling": false,
-          "recompute_normals": false
+          }
       },
       {
+          "type": "mesh",
+          "file": "../models/amogus/obj/sus.obj",
+          "bsdf": "Glass",
+          "smooth": true,
+          "backface_culling": false,
+          "recompute_normals": false,
           "transform": {
               "position": [-350.0, -100.0, 200.0],
               "scale": 3.0,
               "rotation": [0.0, 180.0, 0.0]
-          },
-          "type": "mesh",
-          "file": "models/amogus/obj/sus.obj",
-          "bsdf": "Glass",
-          "smooth": true,
-          "backface_culling": false,
-          "recompute_normals": false
+          }
       },
       {
+          "type": "mesh",
+          "file": "../models/amogus/obj/sus.obj",
+          "bsdf": "DefaultMirror",
+          "smooth": true,
+          "backface_culling": false,
+          "recompute_normals": false,
           "transform": {
               "position": [350.0, -100.0, 200.0],
               "scale": 3.0,
               "rotation": [0.0, 180.0, 0.0]
-          },
-          "type": "mesh",
-          "file": "models/amogus/obj/sus.obj",
-          "bsdf": "DefaultMirror",
-          "smooth": true,
-          "backface_culling": false,
-          "recompute_normals": false
+          }
       }
   ],
   "camera": {

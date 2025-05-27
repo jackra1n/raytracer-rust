@@ -23,8 +23,8 @@ fn main() {
     let start_time = Instant::now();
 
     // let scene_path_str = "data/scenes/tungsten/cornell-box/scene.json";
-    // let scene_path_str = "data/scenes/tungsten/teapot/scene.json";
     // let scene_path_str = "data/scenes/tungsten/veach-mis/scene.json";
+    // let scene_path_str = "data/scenes/tungsten/teapot/scene.json";
     // let scene_path_str = "data/scenes/scene_from_rust.json";
     let scene_path_str = "data/scenes/semesterbild.json";
     println!("Attempting to load scene from: {}", scene_path_str);
@@ -44,18 +44,7 @@ fn main() {
     };
 
     match result {
-        Ok((scene, camera, mut render_settings)) => {
-            // Override max_depth for testing
-            println!(
-                "Original max_depth from scene file: {}",
-                render_settings.max_depth
-            );
-            render_settings.max_depth = 10; // Experiment with a higher max_depth
-            println!(
-                "Overridden max_depth for rendering: {}",
-                render_settings.max_depth
-            );
-
+        Ok((scene, camera, render_settings)) => {
             println!(
                 "Scene loaded. Objects: {}. Image: {}x{}, Samples: {}, Max Depth: {}",
                 scene.object_list.objects.len(),
