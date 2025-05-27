@@ -1,15 +1,19 @@
 use crate::camera::Camera;
 use crate::color::Color;
-use crate::hittable::Hittable;
-use crate::material::{self, Dielectric, EmissiveLight, Lambertian, Material, Metal, NullMaterial};
-use crate::tungsten::{CheckerTexture, MetalType, MicrofacetDistribution, PlasticMaterial, RoughConductor};
+use crate::hittable::HitRecord;
+use crate::material::{Dielectric, EmissiveLight, Lambertian, Material, Metal};
 use crate::mesh::mesh_object::Mesh;
 use crate::objects::plane::Plane;
 use crate::objects::sphere::Sphere;
+use crate::ray::Ray;
 use crate::scene::Scene;
+use crate::tungsten::{
+    CheckerTexture, MetalType, MicrofacetDistribution, PlasticMaterial, RoughConductor,
+};
 use crate::vec3::Vec3;
 use glam::{Mat4, Quat, Vec3 as GlamVec3};
 use image::RgbaImage;
+use rand::RngCore;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::f32::consts::PI;
@@ -83,16 +87,6 @@ pub enum AlbedoConfig {
     Checker(CheckerTextureConfig),
 }
 
-impl AlbedoConfig {
-    fn into_color_or_texture(&self, _scene_directory: &Path) -> Result<Color, String> {
-        match self {
-            AlbedoConfig::Solid(cc) => Ok((*cc).clone().into()),
-            AlbedoConfig::GrayscaleSolid(f) => Ok(Color::new(*f, *f, *f)),
-            AlbedoConfig::Checker(_) => Err("AlbedoConfig::Checker cannot be converted to a single Color. Use Lambertian::new_checker.".to_string()),
-        }
-    }
-}
-
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub enum MaterialTypeConfig {
@@ -158,9 +152,6 @@ pub enum ObjectConfigVariant {
         #[serde(rename = "file")]
         path: String,
         bsdf: String,
-        smooth: Option<bool>,
-        backface_culling: Option<bool>,
-        recompute_normals: Option<bool>,
     },
     Quad {
         transform: ObjectTransformConfig,
@@ -170,20 +161,6 @@ pub enum ObjectConfigVariant {
     Cube {
         transform: ObjectTransformConfig,
         bsdf: String,
-    },
-    #[serde(rename = "infinite_sphere")]
-    InfiniteSphere {
-        transform: ObjectTransformConfig,
-        emission: Option<String>,
-        sample: Option<bool>,
-    },
-    #[serde(rename = "infinite_sphere_cap")]
-    InfiniteSphereCap {
-        transform: ObjectTransformConfig,
-        emission: Option<String>,
-        power: Option<f32>,
-        sample: Option<bool>,
-        cap_angle: Option<f32>,
     },
 }
 
@@ -511,40 +488,6 @@ pub fn load_scene_from_json(
         }
     }
 
-    for obj_conf_variant in &config.objects {
-        if let ObjectConfigVariant::InfiniteSphereCap {
-            emission: Some(emission_path),
-            ..
-        } = obj_conf_variant
-        {
-            if emission_path.ends_with(".hdr") {
-                let tex_path_abs = scene_dir.join(emission_path);
-                match image::open(&tex_path_abs) {
-                    Ok(img) => {
-                        let hdr_image = img.into_rgb32f();
-                        println!("Successfully loaded HDR skybox from InfiniteSphereCap: {:?}", tex_path_abs);
-                        scene.skybox_hdr_image = Some(hdr_image);
-                        break;
-                    }
-                    Err(e) => eprintln!("Error loading HDR skybox image from InfiniteSphereCap '{:?}': {}. Proceeding without it.", tex_path_abs, e),
-                }
-            } else if emission_path.ends_with(".png")
-                || emission_path.ends_with(".jpg")
-                || emission_path.ends_with(".jpeg")
-            {
-                let tex_path_abs = scene_dir.join(emission_path);
-                match image::open(&tex_path_abs) {
-                    Ok(img) => {
-                        println!("Successfully loaded LDR skybox from InfiniteSphereCap: {:?}", tex_path_abs);
-                        scene.skybox_image = Some(img);
-                        break;
-                    }
-                    Err(e) => eprintln!("Error loading LDR skybox image from InfiniteSphereCap '{:?}': {}. Proceeding without it.", tex_path_abs, e),
-                }
-            }
-        }
-    }
-
     if scene.skybox_hdr_image.is_none() && scene.skybox_image.is_none() {
         if let Some(sky_conf) = &config.sky {
             if let Some(tex_path_relative) = &sky_conf.texture {
@@ -686,9 +629,6 @@ pub fn load_scene_from_json(
                 transform,
                 path,
                 bsdf,
-                smooth,
-                backface_culling,
-                recompute_normals,
             } => {
                 let mesh_material = parsed_bsdfs_map.get(&bsdf).cloned().unwrap_or_else(|| {
                     eprintln!(
@@ -816,8 +756,7 @@ pub fn load_scene_from_json(
                     translation_vec,
                 );
 
-                let quad =
-                    crate::objects::quad::Quad::new_transformed(transform_matrix, quad_material);
+                let quad = crate::tungsten::Quad::new_transformed(transform_matrix, quad_material);
                 scene.add_object(Box::new(quad));
             }
             ObjectConfigVariant::Cube { transform, bsdf } => {
@@ -863,335 +802,10 @@ pub fn load_scene_from_json(
 
                 scene.add_object(Box::new(cube_obj));
             }
-            ObjectConfigVariant::InfiniteSphere {
-                transform: obj_transform,
-                emission,
-                sample: _sample,
-            } => {
-                if let Some(emission_path) = emission {
-                    if scene.skybox_hdr_image.is_some() || scene.skybox_image.is_some() {
-                        println!("InfiniteSphere with emission '{}' was likely used as skybox, not adding as separate object.", emission_path);
-                    } else {
-                        eprintln!("Warning: 'infinite_sphere' object with emission '{}' is not handled as a geometric object.", emission_path);
-                    }
-                } else {
-                    eprintln!("Warning: 'infinite_sphere' object without emission is not handled.");
-                }
-            }
-            ObjectConfigVariant::InfiniteSphereCap {
-                transform: obj_transform,
-                emission,
-                power: _power,
-                sample: _sample,
-                cap_angle: _cap_angle,
-            } => {
-                let mut used_for_skybox = false;
-                if let Some(emission_path) = emission {
-                    if scene.skybox_hdr_image.is_some() || scene.skybox_image.is_some() {
-                        let skybox_path_hdr = scene
-                            .skybox_hdr_image
-                            .as_ref()
-                            .and_then(|_| Some(scene_dir.join(&emission_path)));
-                        let skybox_path_ldr = scene
-                            .skybox_image
-                            .as_ref()
-                            .and_then(|_| Some(scene_dir.join(&emission_path)));
-
-                        if (skybox_path_hdr.is_some() && emission_path.ends_with(".hdr"))
-                            || (skybox_path_ldr.is_some()
-                                && (emission_path.ends_with(".png")
-                                    || emission_path.ends_with(".jpg")
-                                    || emission_path.ends_with(".jpeg")))
-                        {
-                            println!("InfiniteSphereCap with emission '{}' was likely used as skybox, not adding as separate object.", emission_path);
-                            used_for_skybox = true;
-                        }
-                    }
-                }
-
-                if !used_for_skybox {
-                    eprintln!("Warning: 'infinite_sphere_cap' object type is recognized but not yet implemented for rendering as a geometric object.");
-                }
-            }
         }
     }
 
     Ok((scene, camera, render_settings))
-}
-
-use crate::hittable::HitRecord;
-use crate::ray::Ray;
-use rand::RngCore;
-
-#[derive(Debug, Clone, Default)]
-pub struct Transform {
-    pub position: Vec3,
-    pub scale: Vec3,
-    pub rotation: Vec3,
-}
-
-fn parse_transform(_transform_conf: &Option<ObjectTransformConfig>) -> Transform {
-    Transform::default()
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct PrimitiveConfig {
-    pub name: Option<String>,
-    #[serde(rename = "type")]
-    pub type_str: String,
-    pub transform: Option<ObjectTransformConfig>,
-    pub bsdf: String,
-    pub radius: Option<f32>,
-}
-
-fn parse_bsdfs(
-    bsdfs_json: &serde_json::Value,
-    parsed_bsdfs_map: &mut HashMap<String, Arc<dyn Material>>,
-    scene_directory: &Path,
-) -> Result<(), String> {
-    if let Some(bsdfs_array) = bsdfs_json.as_array() {
-        for bsdf_conf_val in bsdfs_array {
-            let bsdf_conf: BsdfConfig = match serde_json::from_value(bsdf_conf_val.clone()) {
-                Ok(bc) => bc,
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to parse BSDF config: {:?}. Error: {}",
-                        bsdf_conf_val, e
-                    );
-                    continue;
-                }
-            };
-
-            let material_name = bsdf_conf.name.clone();
-            let material_type = bsdf_conf.type_str.as_str();
-
-            let material_result: Result<Arc<dyn Material>, String> = match material_type {
-                "lambert" => {
-                    let albedo_json =
-                        bsdf_conf
-                            .albedo
-                            .clone()
-                            .unwrap_or(serde_json::Value::Number(
-                                serde_json::Number::from_f64(0.5).unwrap(),
-                            ));
-                    match serde_json::from_value::<AlbedoConfig>(albedo_json.clone()) {
-                        Ok(albedo_config) => {
-                            if let AlbedoConfig::Checker(tex_conf) = albedo_config {
-                                let scale = tex_conf.res_u.or(tex_conf.res_v).unwrap_or(10.0);
-                                let checker_tex = Arc::new(CheckerTexture::new(
-                                    tex_conf.on_color.into(),
-                                    tex_conf.off_color.into(),
-                                    scale,
-                                ));
-                                Ok(Arc::new(Lambertian::new_checker(checker_tex)))
-                            } else {
-                                Ok(Arc::new(material::Lambertian::new_solid(
-                                    albedo_config
-                                        .into_color_or_texture(scene_directory)
-                                        .map_err(|e| format!("Lambertian albedo error: {}", e))?,
-                                )))
-                            }
-                        }
-                        Err(_) => {
-                            let color_conf: ColorConfig =
-                                serde_json::from_value(albedo_json).map_err(|e| e.to_string())?;
-                            Ok(Arc::new(material::Lambertian::new_solid(color_conf.into())))
-                        }
-                    }
-                }
-                "metal" => {
-                    let albedo_val = bsdf_conf
-                        .albedo
-                        .clone()
-                        .unwrap_or(serde_json::json!([0.8, 0.8, 0.8]));
-                    let color_conf: ColorConfig =
-                        serde_json::from_value(albedo_val).map_err(|e| e.to_string())?;
-                    let fuzz = bsdf_conf.roughness.unwrap_or(0.0);
-                    Ok(Arc::new(material::Metal::new(color_conf.into(), fuzz)))
-                }
-                "dielectric" | "glass" => {
-                    let ior = bsdf_conf.ior.unwrap_or(1.5);
-                    Ok(Arc::new(material::Dielectric::new(ior)))
-                }
-                "rough_conductor" => {
-                    let albedo_val = bsdf_conf
-                        .albedo
-                        .clone()
-                        .unwrap_or(serde_json::json!([0.7, 0.7, 0.7]));
-                    let albedo_color =
-                        match serde_json::from_value::<ColorConfig>(albedo_val.clone()) {
-                            Ok(cc) => cc.into(),
-                            Err(_) => match serde_json::from_value::<f32>(albedo_val) {
-                                Ok(f) => Color::new(f, f, f),
-                                Err(e) => {
-                                    return Err(format!(
-                                        "Could not parse albedo for rough_conductor: {}",
-                                        e
-                                    ))
-                                }
-                            },
-                        };
-                    let roughness = bsdf_conf.roughness.unwrap_or(0.1);
-                    let metal_str = bsdf_conf.material.as_deref().unwrap_or("cu").to_lowercase();
-                    let metal_type = match metal_str.as_str() {
-                        "cu" => MetalType::Cu,
-                        "au" => MetalType::Au,
-                        "ag" => MetalType::Ag,
-                        "al" => MetalType::Al,
-                        "ni" => MetalType::Ni,
-                        "ti" => MetalType::Ti,
-                        "fe" => MetalType::Fe,
-                        "pb" => MetalType::Pb,
-                        _ => {
-                            eprintln!("Warning: Unknown metal type '{}' for rough_conductor, defaulting to Cu.", metal_str);
-                            MetalType::Cu
-                        }
-                    };
-                    let dist_str = bsdf_conf
-                        .distribution
-                        .as_deref()
-                        .unwrap_or("ggx")
-                        .to_lowercase();
-                    let distribution = match dist_str.as_str() {
-                        "ggx" => MicrofacetDistribution::GGX,
-                        "beckmann" => MicrofacetDistribution::Beckmann,
-                        _ => {
-                            eprintln!("Warning: Unknown distribution '{}' for rough_conductor, defaulting to GGX.", dist_str);
-                            MicrofacetDistribution::GGX
-                        }
-                    };
-                    Ok(Arc::new(RoughConductor::new(
-                        albedo_color,
-                        roughness,
-                        metal_type,
-                        distribution,
-                    )))
-                }
-                "null" => Ok(Arc::new(NullMaterial::new())),
-                _ => {
-                    let warning_msg = format!(
-                        "Unsupported BSDF type '{}' for BSDF named '{}'.",
-                        material_type, material_name
-                    );
-                    eprintln!("Warning: {}", warning_msg);
-                    Err(warning_msg)
-                }
-            };
-
-            match material_result {
-                Ok(mat) => {
-                    parsed_bsdfs_map.insert(material_name.clone(), mat);
-                }
-                Err(e) => {
-                    eprintln!("Skipping BSDF '{}': {}", material_name, e);
-                }
-            }
-        }
-    } else {
-        return Err("BSDFs section is not an array".to_string());
-    }
-    Ok(())
-}
-
-fn parse_primitives(
-    primitives_json: &serde_json::Value,
-    parsed_bsdfs_map: &HashMap<String, Arc<dyn Material>>,
-    scene_directory: &Path,
-    default_material: Arc<dyn Material>,
-) -> Result<Vec<Arc<dyn Hittable>>, String> {
-    let mut hittables: Vec<Arc<dyn Hittable>> = Vec::new();
-    if let Some(primitives_array) = primitives_json.as_array() {
-        for primitive_conf_val in primitives_array {
-            let primitive_conf: PrimitiveConfig =
-                match serde_json::from_value(primitive_conf_val.clone()) {
-                    Ok(pc) => pc,
-                    Err(e) => {
-                        eprintln!(
-                            "Warning: Failed to parse primitive config: {:?}. Error: {}",
-                            primitive_conf_val, e
-                        );
-                        continue;
-                    }
-                };
-
-            let transform = parse_transform(&primitive_conf.transform);
-            let mut material_to_use: Option<Arc<dyn Material>> = None;
-
-            if let Some(power_val) = primitive_conf_val.get("power") {
-                let power_f32 = match power_val.as_f64() {
-                    Some(p) => p as f32,
-                    None => {
-                        eprintln!("Warning: Could not parse 'power' as f64 for primitive {:?}, defaulting to 0.0.", primitive_conf_val.get("name"));
-                        0.0
-                    }
-                };
-                let intensity = power_f32;
-                let emissive_color = Color::new(intensity, intensity, intensity);
-                material_to_use = Some(Arc::new(EmissiveLight::new(emissive_color)));
-            }
-
-            if material_to_use.is_none() {
-                material_to_use = match parsed_bsdfs_map.get(&primitive_conf.bsdf) {
-                    Some(mat_ref) => Some(mat_ref.clone()),
-                    None => {
-                        eprintln!(
-                            "Warning: BSDF '{}' not found for {} '{}'. Using default material.",
-                            primitive_conf.bsdf,
-                            primitive_conf.type_str,
-                            primitive_conf.name.as_deref().unwrap_or("unnamed")
-                        );
-                        Some(default_material.clone())
-                    }
-                };
-            }
-
-            let final_material = material_to_use.unwrap_or_else(|| {
-                 eprintln!("Critical Error: Material could not be resolved for primitive {:?}. Using default.", primitive_conf_val.get("name"));
-                 default_material.clone()
-            });
-
-            match primitive_conf.type_str.as_str() {
-                "sphere" => {
-                    let radius = primitive_conf.radius.unwrap_or_else(|| {
-                        if transform.scale.x == 1.0 && transform.scale.y == 1.0 && transform.scale.z == 1.0 {
-                            eprintln!("Warning: Sphere {:?} has no explicit radius and no scale in transform. Defaulting to radius 0.5.", primitive_conf.name);
-                            0.5
-                        } else {
-                            (transform.scale.x + transform.scale.y + transform.scale.z) / 3.0
-                        }
-                    });
-                    let center = transform.position;
-                    hittables.push(Arc::new(Sphere {
-                        center,
-                        radius,
-                        material: final_material.clone(),
-                    }));
-                    println!(
-                        "Parsed Sphere: name={:?}, center={:?}, radius={}, material_name={:?}",
-                        primitive_conf.name, center, radius, primitive_conf.bsdf
-                    );
-                }
-                "cube" => {
-                    eprintln!(
-                        "Cube parsing not fully implemented yet for {:?}.",
-                        primitive_conf.name
-                    );
-                }
-                "quad" => {
-                    eprintln!(
-                        "Quad parsing not fully implemented yet for {:?}.",
-                        primitive_conf.name
-                    );
-                }
-                unsupported_type => {
-                    eprintln!("Warning: Unsupported primitive type '{}' for primitive named {:?}. Skipping.", unsupported_type, primitive_conf.name);
-                }
-            }
-        }
-    } else {
-        return Err("Primitives section is not an array".to_string());
-    }
-    Ok(hittables)
 }
 
 #[derive(Deserialize, Debug)]

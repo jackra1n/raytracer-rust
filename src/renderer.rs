@@ -16,12 +16,7 @@ use std::time::Instant;
 
 pub const EPSILON: f32 = 1e-4;
 
-pub fn trace_ray(
-    ray_in: &Ray,
-    scene: &Scene,
-    depth: usize,
-    rng: &mut dyn RngCore,
-) -> Color {
+pub fn trace_ray(ray_in: &Ray, scene: &Scene, depth: usize, rng: &mut dyn RngCore) -> Color {
     if depth == 0 {
         return Color::BLACK;
     }
@@ -37,9 +32,7 @@ pub fn trace_ray(
                     let scattered_color = trace_ray(&scattered_ray, scene, depth - 1, rng);
                     emitted_light + attenuation_color * scattered_color
                 }
-                None => {
-                    emitted_light
-                }
+                None => emitted_light,
             }
         }
         None => {

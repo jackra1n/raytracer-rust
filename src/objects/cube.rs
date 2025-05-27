@@ -3,7 +3,7 @@ use crate::hittable::Hittable;
 use crate::material::Material;
 use crate::ray::Ray;
 use crate::vec3::Vec3 as CrateVec3;
-use glam::{Affine3A, Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec4};
 use std::sync::Arc;
 
 use crate::renderer::EPSILON;
@@ -40,9 +40,6 @@ impl Cube {
             bottom_center.y + half_size_glam.y,
             bottom_center.z,
         );
-
-        let min_glam = center_glam - half_size_glam;
-        let max_glam = center_glam + half_size_glam;
 
         let translation = Mat4::from_translation(center_glam);
         let scale_mat = Mat4::from_scale(Vec3::new(size.x, size.y, size.z));
@@ -92,8 +89,8 @@ impl Hittable for Cube {
         let t_enter_vec = t1.min(t2);
         let t_exit_vec = t1.max(t2);
 
-        let mut t_enter = t_enter_vec.x.max(t_enter_vec.y.max(t_enter_vec.z));
-        let mut t_exit = t_exit_vec.x.min(t_exit_vec.y.min(t_exit_vec.z));
+        let t_enter = t_enter_vec.x.max(t_enter_vec.y.max(t_enter_vec.z));
+        let t_exit = t_exit_vec.x.min(t_exit_vec.y.min(t_exit_vec.z));
 
         if t_exit < t_enter || t_exit <= 0.0 {
             return None;
@@ -135,7 +132,7 @@ impl Hittable for Cube {
 
         let normal_world_h = self.world_to_object.transpose()
             * Vec4::new(normal_obj.x, normal_obj.y, normal_obj.z, 0.0);
-        let mut normal_world =
+        let normal_world =
             CrateVec3::new(normal_world_h.x, normal_world_h.y, normal_world_h.z).normalized();
 
         let mut hit_record = HitRecord {

@@ -3,8 +3,6 @@ use crate::hittable::HitRecord;
 use crate::ray::Ray;
 use crate::vec3::Vec3;
 use rand::{Rng, RngCore};
-use serde::Deserialize;
-use std::f32::consts::PI;
 use std::sync::Arc;
 
 const EPSILON: f32 = 1e-4;
@@ -226,11 +224,11 @@ fn schlick_reflectance(cosine: f32, ref_idx_ratio: f32) -> f32 {
     r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
 }
 
-// --- Null Material ---
 #[derive(Debug, Clone, Copy)]
 pub struct NullMaterial;
 
 impl NullMaterial {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         NullMaterial
     }

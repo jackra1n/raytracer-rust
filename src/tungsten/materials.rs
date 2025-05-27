@@ -35,19 +35,11 @@ impl Material for PlasticMaterial {
     ) -> Option<(Ray, Color)> {
         let reflected_color = Color::new(0.9, 0.9, 0.9); // color of the reflection, can be white or tinted by albedo
 
-        let outward_normal;
-        let ni_over_nt;
-        let cosine;
-
-        if ray_in.direction.dot(hit_record.normal) > 0.0 {
-            outward_normal = -hit_record.normal;
-            ni_over_nt = self.ior;
-            cosine = self.ior * ray_in.direction.dot(hit_record.normal) / ray_in.direction.length();
+        let cosine = if ray_in.direction.dot(hit_record.normal) > 0.0 {
+            self.ior * ray_in.direction.dot(hit_record.normal) / ray_in.direction.length()
         } else {
-            outward_normal = hit_record.normal;
-            ni_over_nt = 1.0 / self.ior;
-            cosine = -ray_in.direction.dot(hit_record.normal) / ray_in.direction.length();
-        }
+            -ray_in.direction.dot(hit_record.normal) / ray_in.direction.length()
+        };
 
         let reflect_prob = schlick(cosine, self.ior);
 
@@ -403,4 +395,4 @@ impl Material for RoughConductor {
         let scattered_ray = Ray::new(scattered_origin, l.normalized());
         Some((scattered_ray, color))
     }
-} 
+}
