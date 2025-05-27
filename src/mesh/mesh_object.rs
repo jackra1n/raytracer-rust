@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 use crate::hittable::{HitRecord, Hittable};
 use crate::material::Material;
-use crate::mesh::bvh::BVHNode;
+use crate::acceleration::BVHNode;
 use crate::mesh::triangle::Triangle;
 use crate::ray::Ray;
 use crate::renderer::EPSILON;

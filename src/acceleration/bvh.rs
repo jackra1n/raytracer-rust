@@ -1,5 +1,5 @@
 use crate::hittable::HitRecord;
-use crate::mesh::aabb::Aabb;
+use crate::acceleration::Aabb;
 use crate::mesh::triangle::Triangle;
 use crate::ray::Ray;
 use crate::renderer::EPSILON;

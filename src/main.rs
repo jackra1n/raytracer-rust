@@ -1,3 +1,4 @@
+mod acceleration;
 mod camera;
 mod color;
 mod hittable;
