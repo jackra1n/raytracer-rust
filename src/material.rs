@@ -138,16 +138,14 @@ impl Material for Dielectric {
         let sin_theta_squared = 1.0 - cos_theta * cos_theta;
 
         let cannot_refract = refraction_ratio * refraction_ratio * sin_theta_squared > 1.0;
-        let scatter_direction: Vec3;
-
         let reflectance = schlick_reflectance(cos_theta, 1.0 / refraction_ratio);
 
-        if cannot_refract || reflectance > rng.random::<f32>() {
-            scatter_direction = reflect(unit_direction, hit_record.normal);
+        let scatter_direction: Vec3 = if cannot_refract || reflectance > rng.random::<f32>() {
+            reflect(unit_direction, hit_record.normal)
         } else {
-            scatter_direction = refract(unit_direction, hit_record.normal, refraction_ratio)
-                .expect("Refraction failed unexpectedly after check");
-        }
+            refract(unit_direction, hit_record.normal, refraction_ratio)
+                .expect("Refraction failed unexpectedly after check")
+        };
 
         let scattered_origin = if scatter_direction.dot(hit_record.normal) > 0.0 {
             hit_record.position + hit_record.normal * EPSILON

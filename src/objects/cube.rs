@@ -114,14 +114,12 @@ impl Hittable for Cube {
             normal_obj.y = position_obj.y.signum();
         } else if (abs_pos_obj.z - 0.5).abs() < tolerance {
             normal_obj.z = position_obj.z.signum();
+        } else if abs_pos_obj.x > abs_pos_obj.y && abs_pos_obj.x > abs_pos_obj.z {
+            normal_obj.x = position_obj.x.signum();
+        } else if abs_pos_obj.y > abs_pos_obj.z {
+            normal_obj.y = position_obj.y.signum();
         } else {
-            if abs_pos_obj.x > abs_pos_obj.y && abs_pos_obj.x > abs_pos_obj.z {
-                normal_obj.x = position_obj.x.signum();
-            } else if abs_pos_obj.y > abs_pos_obj.z {
-                normal_obj.y = position_obj.y.signum();
-            } else {
-                normal_obj.z = position_obj.z.signum();
-            }
+            normal_obj.z = position_obj.z.signum();
         }
         normal_obj = normal_obj.normalize_or_zero();
 
@@ -154,7 +152,7 @@ impl Hittable for Cube {
         }
         hit_record.t = t_world;
 
-        hit_record.set_face_normal(&ray, normal_world);
+        hit_record.set_face_normal(ray, normal_world);
 
         Some(hit_record)
     }

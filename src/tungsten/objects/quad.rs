@@ -104,7 +104,7 @@ impl Hittable for Quad {
         let l1 = v_hit_to_base.dot(self.edge1) * self.inv_edge1_len_sq;
 
         // Check if hit is within the parallelogram defined by base, edge0, edge1
-        if !(l0 >= -EPSILON && l0 <= 1.0 + EPSILON && l1 >= -EPSILON && l1 <= 1.0 + EPSILON) {
+        if !((-EPSILON..=1.0 + EPSILON).contains(&l0) && (-EPSILON..=1.0 + EPSILON).contains(&l1)) {
             // Using EPSILON for float comparisons at boundaries
             return None;
         }

@@ -89,7 +89,7 @@ pub fn render_scene(scene: &Scene, camera: &Camera, render_settings: &RenderSett
         .for_each(|(y_idx, row_slice)| {
             let mut rng = rand::rngs::StdRng::seed_from_u64(y_idx as u64);
 
-            for x_idx in 0..render_settings.width {
+            for (x_idx, pixel) in row_slice.iter_mut().enumerate() {
                 let mut accumulated_color = Color::BLACK;
                 for _s in 0..render_settings.samples_per_pixel {
                     let u = (x_idx as f32 + rng.random::<f32>()) / (render_settings.width as f32);
@@ -99,7 +99,7 @@ pub fn render_scene(scene: &Scene, camera: &Camera, render_settings: &RenderSett
                     accumulated_color = accumulated_color
                         + trace_ray(&ray, scene, render_settings.max_depth, &mut rng);
                 }
-                row_slice[x_idx] = accumulated_color * inv_aa_samples_dynamic;
+                *pixel = accumulated_color * inv_aa_samples_dynamic;
             }
             pb.inc(1);
         });

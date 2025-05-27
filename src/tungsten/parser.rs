@@ -226,8 +226,8 @@ impl Material for TextureMaterial {
 
         let tex_width = self.texture.width();
         let tex_height = self.texture.height();
-        let x_pixel = (u.max(0.0) * (tex_width - 1).max(0) as f32) as u32;
-        let y_pixel = (v.max(0.0) * (tex_height - 1).max(0) as f32) as u32;
+        let x_pixel = (u.max(0.0) * (tex_width - 1) as f32) as u32;
+        let y_pixel = (v.max(0.0) * (tex_height - 1) as f32) as u32;
 
         let rgba_texel = self
             .texture
@@ -361,7 +361,7 @@ pub fn load_scene_from_json(
                     let mut albedo = Color::new(1.0, 1.0, 1.0);
                     let mut roughness = 0.1;
                     let mut metal_type = MetalType::Cu;
-                    let mut distribution = MicrofacetDistribution::GGX;
+                    let mut distribution = MicrofacetDistribution::Ggx;
 
                     if let Some(albedo_val) = &bsdf_conf.albedo {
                         if let Ok(cc) = serde_json::from_value::<ColorConfig>(albedo_val.clone()) {
@@ -394,11 +394,11 @@ pub fn load_scene_from_json(
                     }
                     if let Some(dist_str) = bsdf_conf.distribution.as_ref() {
                         distribution = match dist_str.to_lowercase().as_str() {
-                            "ggx" => MicrofacetDistribution::GGX,
+                            "ggx" => MicrofacetDistribution::Ggx,
                             "beckmann" => MicrofacetDistribution::Beckmann,
                             _ => {
-                                eprintln!("Warning: Unknown distribution '{}' for rough_conductor, defaulting to GGX.", dist_str);
-                                MicrofacetDistribution::GGX
+                                eprintln!("Warning: Unknown distribution '{}' for rough_conductor, defaulting to Ggx.", dist_str);
+                                MicrofacetDistribution::Ggx
                             }
                         };
                     }

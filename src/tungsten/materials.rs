@@ -154,7 +154,7 @@ impl MetalType {
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 pub enum MicrofacetDistribution {
-    GGX,
+    Ggx,
     Beckmann,
 }
 
@@ -199,20 +199,6 @@ fn fresnel_conductor(cos_theta: f32, eta: Color, k: Color) -> Color {
     let t4 = t2;
     let rp = rs * ((t3 - t4) / (t3 + t4));
     (rs + rp) * Color::splat(0.5)
-}
-
-fn ggx_d(roughness: f32, n_dot_h: f32) -> f32 {
-    let a = roughness * roughness;
-    let a2 = a * a;
-    let denom = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
-    a2 / (PI * denom * denom + 1e-7)
-}
-
-fn beckmann_d(roughness: f32, n_dot_h: f32) -> f32 {
-    let a = roughness;
-    let a2 = a * a;
-    let n_dot_h2 = n_dot_h * n_dot_h;
-    (-((n_dot_h2 - 1.0) / (a2 * n_dot_h2 + 1e-7))).exp() / (PI * a2 * n_dot_h2 + 1e-7)
 }
 
 // replace with a more standard smith G1 formulation for GGX
@@ -348,7 +334,7 @@ impl Material for RoughConductor {
         let rough = self.roughness;
 
         let h = match self.distribution {
-            MicrofacetDistribution::GGX => sample_ggx(n, rough, rng),
+            MicrofacetDistribution::Ggx => sample_ggx(n, rough, rng),
             MicrofacetDistribution::Beckmann => sample_beckmann(n, rough, rng),
         };
         if h.x.is_nan() || h.y.is_nan() || h.z.is_nan() {
@@ -369,12 +355,8 @@ impl Material for RoughConductor {
         let n_dot_h = n.dot(h).max(0.0);
         let v_dot_h = v.dot(h).max(0.0);
 
-        let d = match self.distribution {
-            MicrofacetDistribution::GGX => ggx_d(rough, n_dot_h),
-            MicrofacetDistribution::Beckmann => beckmann_d(rough, n_dot_h),
-        };
         let g = match self.distribution {
-            MicrofacetDistribution::GGX => ggx_g(rough, n_dot_v, n_dot_l),
+            MicrofacetDistribution::Ggx => ggx_g(rough, n_dot_v, n_dot_l),
             MicrofacetDistribution::Beckmann => beckmann_g(rough, n_dot_v, n_dot_l),
         };
         let f = fresnel_conductor(v_dot_h, eta, k);
@@ -382,14 +364,11 @@ impl Material for RoughConductor {
         let brdf_numerator = f * g * v_dot_h;
         let brdf_denominator = n_dot_v * n_dot_h + EPSILON;
 
-        let color;
-        if brdf_denominator > EPSILON {
-            color = self.albedo * (brdf_numerator / brdf_denominator);
+        let color = if brdf_denominator > EPSILON {
+            self.albedo * (brdf_numerator / brdf_denominator)
         } else {
-            color = Color::BLACK;
-        }
-
-        if color.r < EPSILON && color.g < EPSILON && color.b < EPSILON && (d * g != 0.0) {}
+            Color::BLACK
+        };
 
         let scattered_origin = hit_record.position + n * EPSILON;
         let scattered_ray = Ray::new(scattered_origin, l.normalized());
