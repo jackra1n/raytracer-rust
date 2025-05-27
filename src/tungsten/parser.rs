@@ -357,6 +357,12 @@ pub fn load_scene_from_json(
                 "null" => Ok(MaterialTypeConfig::Lambertian {
                     albedo: AlbedoConfig::Solid(ColorConfig(0.0, 0.0, 0.0)),
                 }),
+                "glass" | "dielectric" => {
+                    let ior = bsdf_conf.ior.unwrap_or(1.5);
+                    Ok(MaterialTypeConfig::Glass {
+                        index_of_refraction: ior,
+                    })
+                },
                 "rough_conductor" => {
                     let mut albedo = Color::new(1.0, 1.0, 1.0);
                     let mut roughness = 0.1;

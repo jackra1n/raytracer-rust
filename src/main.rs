@@ -22,14 +22,11 @@ use crate::tungsten::load_scene_from_json;
 fn main() {
     let start_time = Instant::now();
 
-    // let scene_file_path_str = "data/scenes/tungsten/cornell-box/scene.json";
-    // let scene_file_path_str = "data/scenes/tungsten/teapot/scene.json";
-    // let scene_file_path_str = "data/scene_from_rust.json";
-    // let scene_file_path_str = "data/scenes/tungsten/dragon/scene.json";
-    // let scene_file_path_str = "data/scenes/tungsten/volumetric-caustic/scene.json";
+    // let scene_path_str = "data/scenes/tungsten/cornell-box/scene.json";
+    // let scene_path_str = "data/scenes/tungsten/teapot/scene.json";
     // let scene_path_str = "data/scenes/tungsten/veach-mis/scene.json";
-    // let scene_path_str = "data/scene_from_rust.json";
-    let scene_path_str = "data/semesterbild.json";
+    // let scene_path_str = "data/scenes/scene_from_rust.json";
+    let scene_path_str = "data/scenes/semesterbild.json";
     println!("Attempting to load scene from: {}", scene_path_str);
     let scene_path = Path::new(scene_path_str);
 
