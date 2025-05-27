@@ -226,6 +226,13 @@ fn schlick_reflectance(cosine: f32, ref_idx_ratio: f32) -> f32 {
     r0 + (1.0 - r0) * (1.0 - cosine).powi(5)
 }
 
+
+
+
+
+// from tungsten
+
+
 #[derive(Clone)]
 pub struct PlasticMaterial {
     pub albedo: Color,
@@ -607,18 +614,6 @@ impl Material for RoughConductor {
         let scattered_ray = Ray::new(scattered_origin, l.normalized());
         Some((scattered_ray, color))
     }
-}
-
-// helper for world-space conversion (assumes normal is z+)
-pub fn to_world(local: Vec3, normal: Vec3) -> Vec3 {
-    let up = if normal.z.abs() < 0.999 {
-        Vec3::new(0.0, 0.0, 1.0)
-    } else {
-        Vec3::new(0.0, 1.0, 0.0)
-    };
-    let tangent = normal.cross(up).normalized();
-    let bitangent = normal.cross(tangent);
-    tangent * local.x + bitangent * local.y + normal * local.z
 }
 
 // --- Null Material ---

@@ -1,16 +1,7 @@
-use crate::color::Color;
 use crate::hittable::{HitRecord, Hittable, HittableList};
-use crate::material::{Dielectric, EmissiveLight, Lambertian, Material, Metal};
-use crate::mesh::mesh_object::Mesh;
-use crate::objects::cube::Cube;
-use crate::objects::plane::Plane;
-use crate::objects::sphere::Sphere;
 use crate::ray::Ray;
-use crate::vec3::Vec3;
-use glam::{Mat4, Quat, Vec3 as GlamVec3};
 use image::DynamicImage;
 use image::{ImageBuffer, Rgb};
-use std::sync::Arc;
 
 pub struct Scene {
     pub object_list: HittableList,

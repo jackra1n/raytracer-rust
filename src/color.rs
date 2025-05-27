@@ -20,14 +20,6 @@ impl Color {
         self.b = self.b.clamp(0.0, 1.0);
     }
 
-    pub fn lerp(self, other: Color, t: f32) -> Color {
-        Color {
-            r: self.r * (1.0 - t) + other.r * t,
-            g: self.g * (1.0 - t) + other.g * t,
-            b: self.b * (1.0 - t) + other.b * t,
-        }
-    }
-
     pub fn splat(v: f32) -> Color {
         Color::new(v, v, v)
     }

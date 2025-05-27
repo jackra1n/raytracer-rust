@@ -623,12 +623,6 @@ pub fn load_scene_from_json(
 
                     let emissive_color = Color::new(radiance_val, radiance_val, radiance_val);
                     sphere_material = Arc::new(EmissiveLight::new(emissive_color));
-                    println!("[DEBUG TUNGSTEN PARSER] Sphere light: power_f32={}, radius={}, calculated_radiance_component={}, emissive_color={:?}", 
-                        p_val,
-                        sphere_radius,
-                        radiance_val,
-                        emissive_color
-                    );
                 }
 
                 let sphere = Sphere {
@@ -1133,12 +1127,6 @@ fn parse_primitives(
                 let intensity = power_f32;
                 let emissive_color = Color::new(intensity, intensity, intensity);
                 material_to_use = Some(Arc::new(EmissiveLight::new(emissive_color)));
-                println!("[DEBUG TUNGSTEN PARSER] Primitive {:?} assigned EmissiveLight: power_f32={}, calculated_intensity={}, emissive_color={:?}", 
-                    primitive_conf_val.get("name").unwrap_or(&serde_json::Value::Null), 
-                    power_f32,
-                    intensity,
-                    emissive_color
-                );
             }
 
             if material_to_use.is_none() {

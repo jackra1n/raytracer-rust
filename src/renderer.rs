@@ -60,11 +60,11 @@ pub fn trace_ray(
                 );
                 Color::new(pixel[0], pixel[1], pixel[2])
             } else {
-                // Default procedural background color if no skybox image is loaded
-                let unit_direction = ray_in.direction.normalized();
-                let t = 0.5 * (unit_direction.y + 1.0);
-                Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
-                // Color::BLACK
+                // default background color if no skybox image is loaded
+                // let unit_direction = ray_in.direction.normalized();
+                // let t = 0.5 * (unit_direction.y + 1.0);
+                // Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
+                Color::BLACK
             }
         }
     }
