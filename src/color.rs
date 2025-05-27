@@ -20,14 +20,6 @@ impl Color {
         self.b = self.b.clamp(0.0, 1.0);
     }
 
-    pub fn lerp(self, other: Color, t: f32) -> Color {
-        Color {
-            r: self.r * (1.0 - t) + other.r * t,
-            g: self.g * (1.0 - t) + other.g * t,
-            b: self.b * (1.0 - t) + other.b * t,
-        }
-    }
-
     pub fn splat(v: f32) -> Color {
         Color::new(v, v, v)
     }
@@ -100,16 +92,51 @@ pub fn color_to_u32(mut c: Color) -> u32 {
     (r << 16) | (g << 8) | b
 }
 
-
 #[allow(dead_code)]
 impl Color {
-    pub const BLACK: Color = Color { r: 0.0, g: 0.0, b: 0.0 };
-    pub const WHITE: Color = Color { r: 1.0, g: 1.0, b: 1.0 };
-    pub const RED: Color = Color { r: 1.0, g: 0.0, b: 0.0 };
-    pub const GREEN: Color = Color { r: 0.0, g: 1.0, b: 0.0 };
-    pub const BLUE: Color = Color { r: 0.0, g: 0.0, b: 1.0 };
-    pub const YELLOW: Color = Color { r: 1.0, g: 1.0, b: 0.0 };
-    pub const MAGENTA: Color = Color { r: 1.0, g: 0.0, b: 1.0 };
-    pub const CYAN: Color = Color { r: 0.0, g: 1.0, b: 1.0 };
-    pub const GRAY: Color = Color { r: 0.5, g: 0.5, b: 0.5 };
+    pub const BLACK: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+    };
+    pub const WHITE: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+    };
+    pub const RED: Color = Color {
+        r: 1.0,
+        g: 0.0,
+        b: 0.0,
+    };
+    pub const GREEN: Color = Color {
+        r: 0.0,
+        g: 1.0,
+        b: 0.0,
+    };
+    pub const BLUE: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 1.0,
+    };
+    pub const YELLOW: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 0.0,
+    };
+    pub const MAGENTA: Color = Color {
+        r: 1.0,
+        g: 0.0,
+        b: 1.0,
+    };
+    pub const CYAN: Color = Color {
+        r: 0.0,
+        g: 1.0,
+        b: 1.0,
+    };
+    pub const GRAY: Color = Color {
+        r: 0.5,
+        g: 0.5,
+        b: 0.5,
+    };
 }

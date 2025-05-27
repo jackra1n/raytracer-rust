@@ -9,7 +9,7 @@
     "resolution": [800, 600]
   },
   "renderer": {
-    "spp": 128,
+    "spp": 64,
     "output_file": "semesterbild_render.png",
     "overwrite_output_files": true
   },

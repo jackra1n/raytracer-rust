@@ -1,54 +1,60 @@
+mod acceleration;
 mod camera;
 mod color;
 mod hittable;
 mod material;
-mod ray;
-mod scene;
-mod vec3;
-mod objects;
 mod mesh;
+mod objects;
+mod ray;
 mod renderer;
-mod tungsten_parser;
-mod text_mesh;
+mod scene;
+mod tungsten;
+mod vec3;
 
-use minifb::{Key, Window, WindowOptions};
 use indicatif::HumanDuration;
-use std::time::Instant;
+use minifb::{Key, Window, WindowOptions};
 use std::path::Path;
+use std::time::Instant;
 
 use crate::renderer::{render_scene, save_image};
-use crate::tungsten_parser::RenderSettings;
+use crate::tungsten::load_scene_from_json;
 
 fn main() {
     let start_time = Instant::now();
 
-    // let scene_file_path_str = "data/scenes/tungsten/cornell-box/scene.json";
-    // let scene_file_path_str = "data/scenes/tungsten/teapot/scene.json";
-    // let scene_file_path_str = "data/scene_from_rust.json";
-    // let scene_file_path_str = "data/scenes/tungsten/dragon/scene.json";
-    // let scene_file_path_str = "data/scenes/tungsten/volumetric-caustic/scene.json";
+    // let scene_path_str = "data/scenes/tungsten/cornell-box/scene.json";
+    // let scene_path_str = "data/scenes/tungsten/teapot/scene.json";
     // let scene_path_str = "data/scenes/tungsten/veach-mis/scene.json";
-    // let scene_path_str = "data/scene_from_rust.json";
-    let scene_path_str = "data/semesterbild.json";
+    // let scene_path_str = "data/scenes/scene_from_rust.json";
+    let scene_path_str = "data/scenes/semesterbild.json";
     println!("Attempting to load scene from: {}", scene_path_str);
     let scene_path = Path::new(scene_path_str);
 
     let result = match scene_path.extension().and_then(std::ffi::OsStr::to_str) {
         Some("json") => {
             println!("Detected JSON scene file.");
-            tungsten_parser::load_scene_from_json(scene_path_str)
+            load_scene_from_json(scene_path_str)
         }
         _ => {
-            panic!("Unsupported scene file extension or path error for: {}", scene_path.display());
+            panic!(
+                "Unsupported scene file extension or path error for: {}",
+                scene_path.display()
+            );
         }
     };
 
     match result {
         Ok((scene, camera, mut render_settings)) => {
             // Override max_depth for testing
-            println!("Original max_depth from scene file: {}", render_settings.max_depth);
+            println!(
+                "Original max_depth from scene file: {}",
+                render_settings.max_depth
+            );
             render_settings.max_depth = 10; // Experiment with a higher max_depth
-            println!("Overridden max_depth for rendering: {}", render_settings.max_depth);
+            println!(
+                "Overridden max_depth for rendering: {}",
+                render_settings.max_depth
+            );
 
             println!(
                 "Scene loaded. Objects: {}. Image: {}x{}, Samples: {}, Max Depth: {}",
@@ -81,7 +87,10 @@ fn main() {
             println!("Window closed.");
         }
         Err(e) => {
-            eprintln!("Failed to load and render scene from '{}': {}", scene_path_str, e);
+            eprintln!(
+                "Failed to load and render scene from '{}': {}",
+                scene_path_str, e
+            );
             return;
         }
     }
