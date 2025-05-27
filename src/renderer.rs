@@ -1,36 +1,22 @@
 use crate::camera::Camera;
 use crate::color::{color_to_u32, Color};
-use crate::hittable::{Hittable};
+use crate::hittable::Hittable;
 use crate::ray::Ray;
 use crate::scene::Scene;
-
+use crate::tungsten::parser::RenderSettings;
 
 use chrono::Local;
 use image::{ImageBuffer, Rgb};
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
-use std::time::Instant;
 use std::fs;
 use std::path::Path;
-
-pub const WIDTH: usize = 800;
-pub const HEIGHT: usize = 600;
-
-pub const NUM_AA_SAMPLES: usize = 16; // 16 for fast, 64/100+ for quality
-pub const INV_AA_SAMPLES: f32 = 1.0 / (NUM_AA_SAMPLES as f32);
-
-pub const MAX_RECURSION_DEPTH: usize = 10; // 50 common for path tracing
+use std::time::Instant;
 
 pub const EPSILON: f32 = 1e-4;
 
-
-pub fn trace_ray(
-    ray_in: &Ray,
-    scene: &Scene,
-    depth: usize,
-    rng: &mut dyn RngCore,
-) -> Color {
+pub fn trace_ray(ray_in: &Ray, scene: &Scene, depth: usize, rng: &mut dyn RngCore) -> Color {
     if depth == 0 {
         return Color::BLACK;
     }
@@ -46,27 +32,43 @@ pub fn trace_ray(
                     let scattered_color = trace_ray(&scattered_ray, scene, depth - 1, rng);
                     emitted_light + attenuation_color * scattered_color
                 }
-                None => {
-                    emitted_light
-                }
+                None => emitted_light,
             }
         }
         None => {
-            // ray missed all objects, return background/sky color
-            let unit_direction = ray_in.direction.normalized();
-            let t = 0.5 * (unit_direction.y + 1.0); // y is up
-            Color::new(1.0, 1.0, 1.0) * (1.0 - t) + Color::new(0.5, 0.7, 1.0) * t
+            // raay MISSED all objects. apply skybox or default background.
+            if let Some(hdr_skybox) = &scene.skybox_hdr_image {
+                let dir = ray_in.direction.normalized();
+                let theta = dir.y.acos();
+                let phi = dir.z.atan2(dir.x) + std::f32::consts::PI;
+                let u = phi / (2.0 * std::f32::consts::PI);
+                let v = theta / std::f32::consts::PI;
+
+                let x_pixel = (u * (hdr_skybox.width() - 1) as f32).max(0.0) as u32;
+                let y_pixel = (v * (hdr_skybox.height() - 1) as f32).max(0.0) as u32;
+
+                let pixel = hdr_skybox.get_pixel(
+                    x_pixel.min(hdr_skybox.width() - 1),
+                    y_pixel.min(hdr_skybox.height() - 1),
+                );
+                Color::new(pixel[0], pixel[1], pixel[2])
+            } else {
+                // default background color if no skybox image is loaded
+                // let unit_direction = ray_in.direction.normalized();
+                // let t = 0.5 * (unit_direction.y + 1.0);
+                // Color::new(1.0, 1.0, 1.0).lerp(Color::new(0.5, 0.7, 1.0), t)
+                Color::BLACK
+            }
         }
     }
 }
 
-
-pub fn render_scene(scene: &Scene, camera: &Camera) -> Vec<u32> {
+pub fn render_scene(scene: &Scene, camera: &Camera, render_settings: &RenderSettings) -> Vec<u32> {
     println!(
         "Rendering frame ({}x{}) with {} AA samples...",
-        WIDTH, HEIGHT, NUM_AA_SAMPLES
+        render_settings.width, render_settings.height, render_settings.samples_per_pixel
     );
-    let pb = ProgressBar::new(HEIGHT as u64);
+    let pb = ProgressBar::new(render_settings.height as u64);
     pb.set_style(
         ProgressStyle::default_bar()
             .template(
@@ -77,24 +79,27 @@ pub fn render_scene(scene: &Scene, camera: &Camera) -> Vec<u32> {
     );
 
     let start_time = Instant::now();
-    let mut image_data = vec![Color::BLACK; WIDTH * HEIGHT];
+    let mut image_data = vec![Color::BLACK; render_settings.width * render_settings.height];
+
+    let inv_aa_samples_dynamic = 1.0 / (render_settings.samples_per_pixel as f32);
 
     image_data
-        .par_chunks_mut(WIDTH)
+        .par_chunks_mut(render_settings.width)
         .enumerate()
         .for_each(|(y_idx, row_slice)| {
-            let mut rng = rand::rng();
+            let mut rng = rand::rngs::StdRng::seed_from_u64(y_idx as u64);
 
-            for x_idx in 0..WIDTH {
+            for (x_idx, pixel) in row_slice.iter_mut().enumerate() {
                 let mut accumulated_color = Color::BLACK;
-                for _s in 0..NUM_AA_SAMPLES {
-                    let u = (x_idx as f32 + rng.random::<f32>()) / (WIDTH as f32);
-                    let v = (y_idx as f32 + rng.random::<f32>()) / (HEIGHT as f32);
+                for _s in 0..render_settings.samples_per_pixel {
+                    let u = (x_idx as f32 + rng.random::<f32>()) / (render_settings.width as f32);
+                    let v = (y_idx as f32 + rng.random::<f32>()) / (render_settings.height as f32);
 
                     let ray = camera.get_ray(u, v);
-                    accumulated_color = accumulated_color + trace_ray(&ray, scene, MAX_RECURSION_DEPTH, &mut rng);
+                    accumulated_color = accumulated_color
+                        + trace_ray(&ray, scene, render_settings.max_depth, &mut rng);
                 }
-                row_slice[x_idx] = accumulated_color * INV_AA_SAMPLES;
+                *pixel = accumulated_color * inv_aa_samples_dynamic;
             }
             pb.inc(1);
         });
@@ -116,15 +121,14 @@ pub fn render_scene(scene: &Scene, camera: &Camera) -> Vec<u32> {
     final_buffer
 }
 
-
-pub fn save_image(buffer: &[u32]) {
+pub fn save_image(buffer: &[u32], width: usize, height: usize) {
     println!("Saving image...");
     let img_start_time = std::time::Instant::now();
 
-    let mut img_buf = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(WIDTH as u32, HEIGHT as u32);
+    let mut img_buf = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(width as u32, height as u32);
 
     for (x, y, pixel) in img_buf.enumerate_pixels_mut() {
-        let index = y as usize * WIDTH + x as usize;
+        let index = y as usize * width + x as usize;
         if index < buffer.len() {
             let color_u32 = buffer[index];
             let r = ((color_u32 >> 16) & 0xFF) as u8;
@@ -133,18 +137,26 @@ pub fn save_image(buffer: &[u32]) {
             *pixel = Rgb([r, g, b]);
         } else {
             eprintln!("Warning: Buffer access out of bounds at ({}, {})", x, y);
-            *pixel = Rgb([255, 0, 255]);
+            *pixel = Rgb([255, 0, 255]); // Magenta for out of bounds
         }
     }
 
     let date_str = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let output_dir = "render_images";
-    
+
     if !Path::new(output_dir).exists() {
         match fs::create_dir_all(output_dir) {
             Ok(_) => println!("Created directory: {}", output_dir),
             Err(e) => {
-                eprintln!("Error creating directory '{}': {}.", output_dir, e);
+                eprintln!(
+                    "Error creating directory '{}': {}. Image will be saved in current directory.",
+                    output_dir, e
+                );
+                let filename = format!("render_pt_{}.png", date_str);
+                match img_buf.save(&filename) {
+                    Ok(_) => println!("Image saved as '{}' in current directory.", filename),
+                    Err(e_fb) => eprintln!("Error saving image in current directory: {}", e_fb),
+                }
                 return;
             }
         }

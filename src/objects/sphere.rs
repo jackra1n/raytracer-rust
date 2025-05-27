@@ -36,7 +36,11 @@ impl Hittable for Sphere {
         let position = ray.at(t);
         let outward_normal = (position - self.center) / self.radius;
         let front_face = ray.direction.dot(outward_normal) < 0.0;
-        let normal = if front_face { outward_normal } else { -outward_normal };
+        let normal = if front_face {
+            outward_normal
+        } else {
+            -outward_normal
+        };
 
         Some(HitRecord {
             t,

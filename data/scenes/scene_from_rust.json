@@ -1,0 +1,204 @@
+{
+  "media": [],
+  "bsdfs": [
+      {
+          "name": "FloorMaterial",
+          "albedo": [0.0, 0.3, 0.3],
+          "type": "lambert"
+      },
+      {
+          "name": "DefaultMirror",
+          "albedo": [0.9, 0.9, 1.0],
+          "type": "rough_conductor",
+          "roughness": 0.02
+      },
+      {
+          "name": "FuzzyMirror",
+          "albedo": [0.0, 0.9, 1.0],
+          "type": "rough_conductor",
+          "roughness": 0.9
+      },
+      {
+          "name": "YellowDiffuse",
+          "albedo": [1.0, 1.0, 0.0],
+          "type": "lambert"
+      },
+      {
+          "name": "MagentaDiffuse",
+          "albedo": [1.0, 0.0, 1.0],
+          "type": "lambert"
+      },
+      {
+          "name": "RedPlastic",
+          "albedo": [1.0, 0.0, 0.0],
+          "type": "lambert"
+      },
+      {
+          "name": "GreyMetal",
+          "albedo": [0.5, 0.5, 0.5],
+          "type": "conductor",
+          "roughness": 0.0
+      },
+      {
+          "name": "Glass",
+          "albedo": 1.0,
+          "type": "dielectric",
+          "ior": 1.5,
+          "enable_refraction": true
+      },
+      {
+          "name": "Light",
+          "albedo": 1.0,
+          "type": "null"
+      }
+  ],
+  "primitives": [
+      {
+          "transform": {
+              "position": [-400.0, 800.0, -800.0],
+              "scale": 50.0
+          },
+          "type": "sphere",
+          "bsdf": "Light",
+          "emission": [10.0, 10.0, 10.0]
+      },
+      {
+          "transform": {
+              "position": [400.0, 600.0, -500.0],
+              "scale": 50.0
+          },
+          "type": "sphere",
+          "bsdf": "Light",
+          "emission": [10.0, 10.0, 10.0]
+      },
+      {
+          "transform": {
+              "position": [0.0, 400.0, 1000.0],
+              "scale": 50.0
+          },
+          "type": "sphere",
+          "bsdf": "Light",
+          "emission": [10.0, 10.0, 10.0]
+      },
+      {
+          "transform": {
+              "position": [0.0, -100.0, 0.0],
+              "scale": [1000.0, 1.0, 1000.0],
+              "rotation": [0.0, 0.0, 0.0]
+          },
+          "type": "quad",
+          "bsdf": "FloorMaterial"
+      },
+      {
+          "transform": {
+              "position": [-350.0, 50.0, -150.0],
+              "scale": 150.0
+          },
+          "type": "sphere",
+          "bsdf": "DefaultMirror"
+      },
+      {
+          "transform": {
+              "position": [350.0, 50.0, -450.0],
+              "scale": 100.0
+          },
+          "type": "sphere",
+          "bsdf": "Glass"
+      },
+      {
+          "transform": {
+              "position": [150.0, 50.0, -450.0],
+              "scale": [100.0, 100.0, 100.0]
+          },
+          "type": "cube",
+          "bsdf": "DefaultMirror"
+      },
+      {
+          "transform": {
+              "position": [250.0, 50.0, -250.0],
+              "scale": 150.0
+          },
+          "type": "sphere",
+          "bsdf": "GreyMetal"
+      },
+      {
+          "transform": {
+              "position": [300.0, -100.0, 0.0],
+              "scale": [100.0, 400.0, 100.0]
+          },
+          "type": "cube",
+          "bsdf": "YellowDiffuse"
+      },
+      {
+          "transform": {
+              "position": [50.0, -50.0, -150.0],
+              "scale": [100.0, 100.0, 100.0]
+          },
+          "type": "cube",
+          "bsdf": "MagentaDiffuse"
+      },
+      {
+          "transform": {
+              "position": [0.0, -100.0, 200.0],
+              "scale": 3.0,
+              "rotation": [0.0, 180.0, 0.0]
+          },
+          "type": "mesh",
+          "file": "models/amogus/obj/sus.obj",
+          "bsdf": "RedPlastic",
+          "smooth": true,
+          "backface_culling": false,
+          "recompute_normals": false
+      },
+      {
+          "transform": {
+              "position": [-350.0, -100.0, 200.0],
+              "scale": 3.0,
+              "rotation": [0.0, 180.0, 0.0]
+          },
+          "type": "mesh",
+          "file": "models/amogus/obj/sus.obj",
+          "bsdf": "Glass",
+          "smooth": true,
+          "backface_culling": false,
+          "recompute_normals": false
+      },
+      {
+          "transform": {
+              "position": [350.0, -100.0, 200.0],
+              "scale": 3.0,
+              "rotation": [0.0, 180.0, 0.0]
+          },
+          "type": "mesh",
+          "file": "models/amogus/obj/sus.obj",
+          "bsdf": "DefaultMirror",
+          "smooth": true,
+          "backface_culling": false,
+          "recompute_normals": false
+      }
+  ],
+  "camera": {
+    "type": "pinhole",
+    "resolution": [800, 600],
+    "transform": {
+        "position": [0.0, 250.0, -1200.0],
+        "look_at": [0.0, 50.0, 0.0],
+        "up": [0.0, 1.0, 0.0]
+    },
+    "fov": 60.0
+  },
+  "integrator": {
+      "type": "path_tracer",
+      "min_bounces": 0,
+      "max_bounces": 16,
+      "enable_consistency_checks": false,
+      "enable_two_sided_shading": true,
+      "enable_light_sampling": true,
+      "enable_volume_light_sampling": true
+  },
+  "renderer": {
+      "spp": 64,
+      "output_file": "scene.png",
+      "hdr_output_file": "scene.exr"
+  }
+}

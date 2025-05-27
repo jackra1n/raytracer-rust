@@ -1,3 +1,4 @@
+mod acceleration;
 mod camera;
 mod color;
 mod hittable;
@@ -7,51 +8,93 @@ mod objects;
 mod ray;
 mod renderer;
 mod scene;
+mod tungsten;
 mod vec3;
 
+use indicatif::HumanDuration;
 use minifb::{Key, Window, WindowOptions};
+use std::path::Path;
+use std::time::Instant;
 
-use crate::camera::Camera;
-use crate::scene::init_scene;
-use crate::vec3::Vec3;
-
-use crate::renderer::{render_scene, save_image, HEIGHT, WIDTH};
+use crate::renderer::{render_scene, save_image};
+use crate::tungsten::load_scene_from_json;
 
 fn main() {
-    let mut window = Window::new(
-        "Raytracer - ESC to exit",
-        WIDTH,
-        HEIGHT,
-        WindowOptions::default(),
-    )
-    .unwrap_or_else(|e| panic!("Unable to create window: {}", e));
+    let start_time = Instant::now();
 
-    println!("Initializing scene...");
-    let scene = init_scene();
-    println!(
-        "Scene initialized with {} objects.",
-        scene.object_list.objects.len()
-    );
+    // let scene_path_str = "data/scenes/tungsten/cornell-box/scene.json";
+    // let scene_path_str = "data/scenes/tungsten/teapot/scene.json";
+    // let scene_path_str = "data/scenes/tungsten/veach-mis/scene.json";
+    // let scene_path_str = "data/scenes/scene_from_rust.json";
+    let scene_path_str = "data/scenes/semesterbild.json";
+    println!("Attempting to load scene from: {}", scene_path_str);
+    let scene_path = Path::new(scene_path_str);
 
-    let camera = Camera::new(
-        Vec3::new(0.0, 250.0, -1200.0),
-        Vec3::new(0.0, 50.0, 0.0),
-        Vec3::new(0.0, 1.0, 0.0),
-        60.0,
-        WIDTH as f32 / HEIGHT as f32,
-    );
+    let result = match scene_path.extension().and_then(std::ffi::OsStr::to_str) {
+        Some("json") => {
+            println!("Detected JSON scene file.");
+            load_scene_from_json(scene_path_str)
+        }
+        _ => {
+            panic!(
+                "Unsupported scene file extension or path error for: {}",
+                scene_path.display()
+            );
+        }
+    };
 
-    let buffer = render_scene(&scene, &camera);
+    match result {
+        Ok((scene, camera, mut render_settings)) => {
+            // Override max_depth for testing
+            println!(
+                "Original max_depth from scene file: {}",
+                render_settings.max_depth
+            );
+            render_settings.max_depth = 10; // Experiment with a higher max_depth
+            println!(
+                "Overridden max_depth for rendering: {}",
+                render_settings.max_depth
+            );
 
-    save_image(&buffer);
+            println!(
+                "Scene loaded. Objects: {}. Image: {}x{}, Samples: {}, Max Depth: {}",
+                scene.object_list.objects.len(),
+                render_settings.width,
+                render_settings.height,
+                render_settings.samples_per_pixel,
+                render_settings.max_depth
+            );
 
-    while window.is_open() && !window.is_key_down(Key::Escape) {
-        window
-            .update_with_buffer(&buffer, WIDTH, HEIGHT)
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to update window buffer: {}", e);
-            });
+            let buffer = render_scene(&scene, &camera, &render_settings);
+            save_image(&buffer, render_settings.width, render_settings.height);
+
+            let mut window = Window::new(
+                "Raytracer - ESC to exit",
+                render_settings.width,
+                render_settings.height,
+                WindowOptions::default(),
+            )
+            .unwrap_or_else(|e| panic!("Unable to create window: {}", e));
+
+            println!("Displaying render. Press ESC to close.");
+            while window.is_open() && !window.is_key_down(Key::Escape) {
+                window
+                    .update_with_buffer(&buffer, render_settings.width, render_settings.height)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Failed to update window buffer: {}", e);
+                    });
+            }
+            println!("Window closed.");
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to load and render scene from '{}': {}",
+                scene_path_str, e
+            );
+            return;
+        }
     }
 
-    println!("Exiting.");
+    let total_time = start_time.elapsed();
+    println!("Total execution time: {}", HumanDuration(total_time));
 }

@@ -1,0 +1,94 @@
+{
+  "camera": {
+    "transform": {
+      "position": {"x": 0.9, "y": 1.2, "z": 0.9},
+      "look_at": {"x": 0.36, "y": 0.3, "z": 0.36},
+      "up": {"x": 0, "y": 1, "z": 0}
+    },
+    "fov": 60,
+    "resolution": [800, 600]
+  },
+  "renderer": {
+    "spp": 64,
+    "output_file": "semesterbild_render.png",
+    "overwrite_output_files": true
+  },
+  "integrator": {
+    "max_bounces": 10
+  },
+  "bsdfs": [
+    {
+      "name": "red_wall_mat",
+      "type": "lambert",
+      "albedo": [0.7, 0.1, 0.1]
+    },
+    {
+      "name": "green_wall_mat",
+      "type": "lambert",
+      "albedo": [0.1, 0.7, 0.1]
+    },
+    {
+      "name": "blue_floor_mat",
+      "type": "rough_conductor",
+      "albedo": [0.2, 0.3, 0.6],
+      "material": "Al",
+      "distribution": "ggx",
+      "roughness": 0.1
+    },
+    {
+      "name": "glass_ball_mat",
+      "type": "dielectric",
+      "ior": 1.52
+    },
+    {
+      "name": "light_bsdf",
+      "type": "null"
+    }
+  ],
+  "primitives": [
+    {
+      "type": "quad",
+      "bsdf": "blue_floor_mat",
+      "transform": {
+        "position": {"x": 1.25, "y": 0, "z": 1.25},
+        "scale": {"x": 2.5, "y": 0.1, "z": 2.5},
+        "rotation": {"x": 0, "y": 0, "z": 0}
+      }
+    },
+    {
+      "type": "quad",
+      "bsdf": "red_wall_mat",
+      "transform": {
+        "position": {"x": 0, "y": 0.35, "z": 1.25},
+        "scale": {"x": 0.7, "y": 0.1, "z": 2.5},
+        "rotation": {"x": 0, "y": 0, "z": -90}
+      }
+    },
+    {
+      "type": "quad",
+      "bsdf": "green_wall_mat",
+      "transform": {
+        "position": {"x": 1.25, "y": 0.35, "z": 0},
+        "scale": {"x": 2.5, "y": 0.1, "z": 0.7},
+        "rotation": {"x": 90, "y": 0, "z": 0}
+      }
+    },
+    {
+      "type": "sphere",
+      "bsdf": "glass_ball_mat",
+      "radius": 0.3,
+      "transform": {
+        "position": {"x": 0.36, "y": 0.3, "z": 0.36}
+      }
+    },
+    {
+      "type": "sphere",
+      "bsdf": "light_bsdf",
+      "radius": 0.2,
+      "transform": {
+        "position": {"x": 0.36, "y": 1.0, "z": 0.36} 
+      },
+      "power": 10.0
+    }
+  ]
+} 
