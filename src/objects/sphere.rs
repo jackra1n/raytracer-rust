@@ -4,6 +4,7 @@ use crate::material::Material;
 use crate::ray::Ray;
 use crate::vec3::Vec3;
 use std::sync::Arc;
+
 pub struct Sphere {
     pub center: Vec3,
     pub radius: f32,

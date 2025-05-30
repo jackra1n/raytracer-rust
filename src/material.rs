@@ -14,6 +14,7 @@ pub trait Material: Send + Sync {
         hit_record: &HitRecord,
         rng: &mut dyn RngCore,
     ) -> Option<(Ray, Color)>;
+
     fn emitted(&self, _u: f32, _v: f32, _p: &Vec3) -> Color {
         Color::BLACK
     }
@@ -35,6 +36,7 @@ impl Lambertian {
             albedo_kind: AlbedoKind::Solid(albedo),
         }
     }
+
     pub fn new_checker(texture: Arc<crate::tungsten::CheckerTexture>) -> Self {
         Self {
             albedo_kind: AlbedoKind::Checked(texture),
